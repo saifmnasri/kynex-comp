@@ -5,6 +5,12 @@
 //!
 //! This crate must not depend on any other `kx-*` crate, on Smithay, or on any Wayland crate.
 
+mod logging;
+mod panic_hook;
+
+pub use logging::{LoggingError, init_logging};
+pub use panic_hook::install_panic_hook;
+
 /// Human-readable product name.
 pub const PRODUCT_NAME: &str = "KynexComp";
 
