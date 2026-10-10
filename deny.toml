@@ -23,6 +23,10 @@ confidence-threshold = 0.93
 # MPL-2.0 and LGPL-* require explicit human approval: add a documented per-crate exception here, never a global allow.
 exceptions = []
 
+[licenses.private]
+# Ignore unpublished workspace crates with proprietary license (publish = false)
+ignore = true
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"

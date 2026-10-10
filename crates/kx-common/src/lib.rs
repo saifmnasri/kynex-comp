@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Kynex. All rights reserved.
 // Proprietary and confidential. See LICENSE.
 
-//! Shared leaf types for KynexComp.
+//! Shared leaf types for `KynexComp`.
 //!
 //! This crate must not depend on any other `kx-*` crate, on Smithay, or on any Wayland crate.
 
