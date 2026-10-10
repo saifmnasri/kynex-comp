@@ -1,0 +1,70 @@
+# KynexComp — virtual workspace. Crates are added phase by phase (see docs/ROADMAP.md).
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+# Edition 2024 needs Rust 1.85+. Raise this to the pinned Smithay's MSRV if it is higher.
+rust-version = "1.85"
+license = "LicenseRef-Kynex-Proprietary"
+publish = false
+authors = ["Kynex"]
+
+# Shared dependency versions go here and are pinned. The agent must NOT add entries without approval
+# (rule 00 / rule 08). The Smithay version is chosen and pinned in Phase 1 after checking crates.io.
+[workspace.dependencies]
+kx-common = { path = "crates/kx-common" }
+
+# ---------------------------------------------------------------------------------------------
+# Lints. Every crate opts in with:  [lints] workspace = true
+# A crate that genuinely needs unsafe (after user approval) must NOT inherit this table; it gets its
+# own [lints] table copying these entries with `unsafe_code = "deny"` and `unsafe_op_in_unsafe_fn`.
+# ---------------------------------------------------------------------------------------------
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+# No panics in runtime code (tests are exempted in clippy.toml).
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+exit = "deny"
+# Hygiene.
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+undocumented_unsafe_blocks = "deny"
+mem_forget = "deny"
+rc_mutex = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+# Pedantic lints that are too noisy for this codebase.
+module_name_repetitions = "allow"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
+[profile.dev]
+opt-level = 1          # usable nested compositor while developing
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 3          # dependencies (Smithay, GL, xkb) fast even in dev builds
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"       # the crash hook needs unwinding (rule 06)
+debug = "line-tables-only"
+split-debuginfo = "packed"   # ship the debug package separately; strip the binary at packaging time

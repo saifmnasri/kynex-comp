@@ -1,0 +1,5 @@
+[toolchain]
+# Pin to an exact stable version (e.g. "1.9x.0") after the first green build, then bump deliberately.
+channel = "stable"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+profile = "minimal"

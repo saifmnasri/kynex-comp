@@ -1,0 +1,11 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+too-many-lines-threshold = 80
+too-many-arguments-threshold = 6
+cognitive-complexity-threshold = 20
+disallowed-methods = [
+  { path = "std::thread::sleep", reason = "never block the event loop or sync tests with sleep; use calloop timers or explicit waits" },
+  { path = "std::process::exit", reason = "exit through the orderly shutdown path so DRM master and the VT are restored" },
+]

@@ -1,0 +1,13 @@
+/target
+**/*.rs.bk
+*.dwp
+*.swp
+.env
+*.log
+crash/
+/vendor
+.DS_Store
+
+# AI agent configuration & rules (keep local only)
+.agents/
+agents/
