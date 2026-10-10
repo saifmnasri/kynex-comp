@@ -39,4 +39,5 @@ See the layout and dependency DAG in rule 02. Add one line per crate here when i
 
 | Crate | Layer | Pure logic? | Responsibility |
 |-------|-------|-------------|----------------|
-| `kx-common` | leaf | yes | shared leaf types |
+| `kx-common` | leaf | yes | shared leaf types, logging init, structured panic hook |
+| `kx-config` | config | yes | typed configuration, validation, defaults, two-pass parsing |

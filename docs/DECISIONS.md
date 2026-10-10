@@ -32,3 +32,14 @@ Format: `ADR-NNNN — title — status — context — decision — consequences
 
 ## ADR-0008 — Compositor name — Accepted
 **Decision:** Product name **KynexComp**, binary `kynex-comp`, crate prefix `kx-`, session `kynex-session`.
+
+## ADR-0009 — Config size cap 256 KiB — Accepted
+**Context:** Malformed or huge configuration files fed to the parser could consume excessive memory or CPU.
+**Decision:** Enforce a strict 256 KiB (262,144 bytes) size limit on configuration files in `load_from_str` before parsing.
+**Consequences:** Oversized files are rejected immediately with `ConfigError::Oversized`. Legitimate desktop configs will never approach this limit.
+
+## ADR-0010 — Manual crash report formatting without serde_json — Accepted
+**Context:** During panic handling, the process state is partially degraded; allocating complex serde JSON structures in leaf `kx-common` could fail or pull in heavy dependencies.
+**Decision:** Write crash reports in a structured plain text key-value format (`KynexComp Crash Report`, `version`, `pid`, `timestamp`, `location`, `message`, `Backtrace`) using standard `write!` / `writeln!`.
+**Consequences:** Keeps `kx-common` free of JSON dependencies, robust during stack unwinding, and easily readable by automated tools or developers.
+
