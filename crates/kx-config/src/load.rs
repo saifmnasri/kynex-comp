@@ -94,3 +94,155 @@ fn validate_input(input: &InputConfig) -> Result<(), ConfigError> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{DEFAULT_LOG_LEVEL, DEFAULT_REPEAT_DELAY_MS, DEFAULT_REPEAT_RATE_HZ};
+
+    #[test]
+    fn valid_minimal_config() {
+        let toml_str = "config_version = 1\n";
+        let config = load_from_str(toml_str).unwrap();
+        assert_eq!(config.config_version, 1);
+        assert_eq!(config.general.log_level, DEFAULT_LOG_LEVEL);
+        assert_eq!(config.input.repeat_delay_ms, DEFAULT_REPEAT_DELAY_MS);
+        assert_eq!(config.input.repeat_rate_hz, DEFAULT_REPEAT_RATE_HZ);
+        assert!(!config.appearance.enable_animations);
+    }
+
+    #[test]
+    fn valid_full_config() {
+        let toml_str = r#"
+            config_version = 1
+
+            [general]
+            log_level = "debug"
+
+            [input]
+            repeat_delay_ms = 300
+            repeat_rate_hz = 50
+
+            [appearance]
+            enable_animations = true
+        "#;
+        let config = load_from_str(toml_str).unwrap();
+        assert_eq!(config.config_version, 1);
+        assert_eq!(config.general.log_level, "debug");
+        assert_eq!(config.input.repeat_delay_ms, 300);
+        assert_eq!(config.input.repeat_rate_hz, 50);
+        assert!(config.appearance.enable_animations);
+    }
+
+    #[test]
+    fn unknown_field_rejected() {
+        let root_unknown = "config_version = 1\nunknown_key = 42\n";
+        assert!(matches!(
+            load_from_str(root_unknown),
+            Err(ConfigError::Parse(_))
+        ));
+
+        let section_unknown = "config_version = 1\n[general]\nlog_level = \"info\"\nextra = true\n";
+        assert!(matches!(
+            load_from_str(section_unknown),
+            Err(ConfigError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn oversized_rejected_at_boundary() {
+        let prefix = "config_version = 1\n# ";
+        let pad_len = MAX_CONFIG_SIZE - prefix.len();
+        let mut boundary_str = String::with_capacity(MAX_CONFIG_SIZE + 1);
+        boundary_str.push_str(prefix);
+        boundary_str.extend(std::iter::repeat_n('a', pad_len));
+        assert_eq!(boundary_str.len(), MAX_CONFIG_SIZE);
+
+        assert!(load_from_str(&boundary_str).is_ok());
+
+        boundary_str.push('b');
+        assert_eq!(boundary_str.len(), MAX_CONFIG_SIZE + 1);
+        assert_eq!(
+            load_from_str(&boundary_str),
+            Err(ConfigError::Oversized {
+                size: MAX_CONFIG_SIZE + 1,
+                max: MAX_CONFIG_SIZE,
+            })
+        );
+    }
+
+    #[test]
+    fn wrong_version_rejected() {
+        let v0 = "config_version = 0\n";
+        assert_eq!(
+            load_from_str(v0),
+            Err(ConfigError::UnsupportedVersion { found: 0 })
+        );
+
+        let v99 = "config_version = 99\n";
+        assert_eq!(
+            load_from_str(v99),
+            Err(ConfigError::UnsupportedVersion { found: 99 })
+        );
+
+        let v2_with_unknown = "config_version = 2\nunknown_future_field = 123\n";
+        assert_eq!(
+            load_from_str(v2_with_unknown),
+            Err(ConfigError::UnsupportedVersion { found: 2 })
+        );
+    }
+
+    #[test]
+    fn defaults_applied() {
+        let toml_str = "config_version = 1\n";
+        let config = load_from_str(toml_str).unwrap();
+        assert_eq!(config.general.log_level, "info");
+        assert_eq!(config.input.repeat_delay_ms, 400);
+        assert_eq!(config.input.repeat_rate_hz, 25);
+        assert!(!config.appearance.enable_animations);
+    }
+
+    #[test]
+    fn empty_string_rejected() {
+        assert!(matches!(load_from_str(""), Err(ConfigError::Parse(_))));
+    }
+
+    #[test]
+    fn deeply_nested_input_handled_gracefully() {
+        let deep = "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
+        assert!(matches!(load_from_str(deep), Err(ConfigError::Parse(_))));
+    }
+
+    #[test]
+    fn semantic_validation() {
+        let invalid_log = "config_version = 1\n[general]\nlog_level = \"verbose\"\n";
+        assert!(matches!(
+            load_from_str(invalid_log),
+            Err(ConfigError::Validation(_))
+        ));
+
+        let delay_too_low = "config_version = 1\n[input]\nrepeat_delay_ms = 10\n";
+        assert!(matches!(
+            load_from_str(delay_too_low),
+            Err(ConfigError::Validation(_))
+        ));
+
+        let delay_too_high = "config_version = 1\n[input]\nrepeat_delay_ms = 10000\n";
+        assert!(matches!(
+            load_from_str(delay_too_high),
+            Err(ConfigError::Validation(_))
+        ));
+
+        let rate_too_low = "config_version = 1\n[input]\nrepeat_rate_hz = 0\n";
+        assert!(matches!(
+            load_from_str(rate_too_low),
+            Err(ConfigError::Validation(_))
+        ));
+
+        let rate_too_high = "config_version = 1\n[input]\nrepeat_rate_hz = 500\n";
+        assert!(matches!(
+            load_from_str(rate_too_high),
+            Err(ConfigError::Validation(_))
+        ));
+    }
+}
