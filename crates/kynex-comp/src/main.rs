@@ -13,6 +13,8 @@ pub struct CliArgs {
     pub backend: String,
     /// Optional path to an alternative configuration file.
     pub config_path: Option<PathBuf>,
+    /// Optional frame count limit (useful for automated testing).
+    pub max_frames: Option<u64>,
 }
 
 fn print_help() {
@@ -20,6 +22,7 @@ fn print_help() {
     tracing::info!("Options:");
     tracing::info!("  --backend <winit|drm|headless>  Select backend (default: winit)");
     tracing::info!("  --config <path>                 Path to configuration file");
+    tracing::info!("  --max-frames <count>            Limit rendered frames before exit");
     tracing::info!("  --help                          Display this help message");
     tracing::info!("  --version                       Display version information");
 }
@@ -27,6 +30,7 @@ fn print_help() {
 fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
     let mut backend = String::from("winit");
     let mut config_path = None;
+    let mut max_frames = None;
     let mut idx = 1;
 
     while idx < args.len() {
@@ -58,6 +62,16 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
                     .ok_or_else(|| String::from("missing argument to --config"))?;
                 config_path = Some(PathBuf::from(val));
             }
+            "--max-frames" => {
+                idx = idx.saturating_add(1);
+                let val = args
+                    .get(idx)
+                    .ok_or_else(|| String::from("missing argument to --max-frames"))?;
+                let frames = val
+                    .parse::<u64>()
+                    .map_err(|e| format!("invalid number for --max-frames: {e}"))?;
+                max_frames = Some(frames);
+            }
             other => {
                 return Err(format!("unknown argument: {other}"));
             }
@@ -68,6 +82,7 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
     Ok(Some(CliArgs {
         backend,
         config_path,
+        max_frames,
     }))
 }
 
@@ -107,6 +122,12 @@ fn run() -> anyhow::Result<()> {
             parsed.backend
         );
     }
+
+    let options = kx_shell_core::NestedOptions {
+        config: kx_shell_core::NestedConfig::default(),
+        max_frames: parsed.max_frames,
+    };
+    kx_shell_core::run_nested(&options)?;
 
     Ok(())
 }
@@ -173,5 +194,25 @@ mod tests {
         assert!(parse_args(&[String::from("kynex-comp"), String::from("--backend")]).is_err());
         assert!(parse_args(&[String::from("kynex-comp"), String::from("--config")]).is_err());
         assert!(parse_args(&[String::from("kynex-comp"), String::from("--unknown")]).is_err());
+        assert!(parse_args(&[String::from("kynex-comp"), String::from("--max-frames")]).is_err());
+        assert!(
+            parse_args(&[
+                String::from("kynex-comp"),
+                String::from("--max-frames"),
+                String::from("invalid")
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_max_frames_flag() {
+        let args = vec![
+            String::from("kynex-comp"),
+            String::from("--max-frames"),
+            String::from("42"),
+        ];
+        let parsed = parse_args(&args).unwrap().unwrap();
+        assert_eq!(parsed.max_frames, Some(42));
     }
 }

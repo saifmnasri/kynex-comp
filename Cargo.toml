@@ -27,7 +27,7 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 proptest = "1.12.0"
 tempfile = "3.27.0"
 smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "wayland_frontend", "desktop", "renderer_gl"] }
-calloop = { version = "0.13.0", features = ["signals"] }
+calloop = { version = "0.14.5", features = ["signals"] }
 slotmap = "1.0.7"
 bitflags = "2.9.1"
 anyhow = "1.0.98"
