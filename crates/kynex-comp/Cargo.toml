@@ -1,0 +1,19 @@
+[package]
+name = "kynex-comp"
+description = "Wayland compositor binary for KynexOS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kx-common.workspace = true
+kx-config.workspace = true
+kx-shell-core.workspace = true
+calloop.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+
+[lints]
+workspace = true
