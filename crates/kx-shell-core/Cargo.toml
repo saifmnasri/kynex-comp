@@ -19,6 +19,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 wayland-client.workspace = true
+wayland-protocols.workspace = true
 
 [lints]
 workspace = true

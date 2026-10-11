@@ -5,17 +5,19 @@
 
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use calloop::generic::Generic;
 use calloop::signals::{Signal, Signals};
 use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::backend::input::{InputEvent, KeyState, KeyboardKeyEvent};
+use smithay::backend::renderer::Color32F;
+use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::backend::renderer::{Color32F, Frame, Renderer};
 use smithay::backend::winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend, WinitInput};
+use smithay::desktop::space::render_output;
 use smithay::reexports::wayland_server::Display;
-use smithay::utils::{Rectangle, Transform};
 use smithay::wayland::socket::ListeningSocketSource;
 
 use crate::client::ClientState;
@@ -79,10 +81,12 @@ struct EmergencyModifiers {
 struct NestedLoopState {
     running: bool,
     backend: WinitGraphicsBackend<GlesRenderer>,
+    damage_tracker: OutputDamageTracker,
     modifiers: EmergencyModifiers,
     frame_count: u64,
     max_frames: Option<u64>,
     bg_color: Color32F,
+    start_time: Instant,
     last_error: Option<ShellError>,
     state: KynexState,
     display: Display<KynexState>,
@@ -109,31 +113,45 @@ impl NestedLoopState {
         }
     }
 
+    fn send_frames(&self) {
+        let output = &self.state.output;
+        let elapsed = self.start_time.elapsed();
+        for window in self.state.space.elements() {
+            window.send_frame(output, elapsed, Some(Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        }
+    }
+
     fn render_frame(&mut self) -> Result<(), ShellError> {
         // Dispatch pending client messages before compositing
         self.display
             .dispatch_clients(&mut self.state)
             .map_err(|e| ShellError::ClientDispatch(e.to_string()))?;
 
-        let window_size = self.backend.window_size();
-        let damage = [Rectangle::from_size(window_size)];
+        let buffer_age = self.backend.buffer_age().unwrap_or(0);
 
-        {
+        let render_res = {
             let (renderer, mut framebuffer) = self.backend.bind()?;
-            let mut frame = renderer
-                .render(&mut framebuffer, window_size, Transform::Normal)
-                .map_err(|e| ShellError::Render(format!("{e:?}")))?;
+            render_output::<_, WaylandSurfaceRenderElement<GlesRenderer>, _, _>(
+                &self.state.output,
+                renderer,
+                &mut framebuffer,
+                1.0,
+                buffer_age,
+                [&self.state.space],
+                &[],
+                &mut self.damage_tracker,
+                self.bg_color,
+            )
+            .map_err(|e| ShellError::Render(format!("{e:?}")))?
+        };
 
-            frame
-                .clear(self.bg_color, &damage)
-                .map_err(|e| ShellError::Render(format!("{e:?}")))?;
-
-            let _sync_point = frame
-                .finish()
-                .map_err(|e| ShellError::Render(format!("{e:?}")))?;
+        if let Some(damage) = render_res.damage {
+            self.backend.submit(Some(damage))?;
         }
 
-        self.backend.submit(Some(&damage))?;
+        self.send_frames();
 
         // Flush protocol replies to clients after frame submission
         self.display
@@ -192,6 +210,7 @@ fn register_event_sources(
                 if let Err(err) = loop_state.display.dispatch_clients(&mut loop_state.state) {
                     tracing::error!(%err, "Error dispatching Wayland clients on poll event");
                 }
+                loop_state.backend.window().request_redraw();
                 Ok(PostAction::Continue)
             },
         )
@@ -259,6 +278,8 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
 
     let state = KynexState::new(&display.handle(), socket_name, backend.window_size())?;
     let poll_fd = display.backend().poll_fd().try_clone_to_owned()?;
+    let damage_tracker = OutputDamageTracker::from_output(&state.output);
+    let start_time = Instant::now();
 
     let mut event_loop: EventLoop<'_, NestedLoopState> = EventLoop::try_new()?;
     register_event_sources(
@@ -271,10 +292,12 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
     let mut loop_state = NestedLoopState {
         running: true,
         backend,
+        damage_tracker,
         modifiers: EmergencyModifiers::default(),
         frame_count: 0,
         max_frames: options.max_frames,
         bg_color,
+        start_time,
         last_error: None,
         state,
         display,

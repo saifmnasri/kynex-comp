@@ -6,20 +6,28 @@
 use std::sync::OnceLock;
 
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
+use smithay::desktop::{PopupKind, PopupManager, Space, Window};
 use smithay::input::keyboard::XkbConfig;
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
+use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle};
-use smithay::utils::{Physical, Point, Size, Transform};
+use smithay::utils::{Physical, Point, Serial, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
 use smithay::wayland::output::OutputHandler;
+use smithay::wayland::shell::xdg::{
+    PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+};
 use smithay::wayland::shm::{ShmHandler, ShmState};
-use smithay::{delegate_compositor, delegate_output, delegate_seat, delegate_shm};
+use smithay::{
+    delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell,
+};
 
 use crate::client::ClientState;
 use crate::error::ShellError;
@@ -38,6 +46,12 @@ pub struct KynexState {
     pub output: Output,
     /// Bound socket name (e.g. `wayland-1`).
     pub socket_name: String,
+    /// XDG Shell protocol state (`xdg_wm_base`).
+    pub xdg_shell_state: XdgShellState,
+    /// 2D space managing window placement and stacking.
+    pub space: Space<Window>,
+    /// Popup manager tracking popup relationships.
+    pub popups: PopupManager,
 }
 
 impl KynexState {
@@ -83,6 +97,11 @@ impl KynexState {
         );
         let _global = output.create_global::<Self>(dh);
 
+        let xdg_shell_state = XdgShellState::new::<Self>(dh);
+        let mut space = Space::default();
+        space.map_output(&output, (0, 0));
+        let popups = PopupManager::default();
+
         Ok(Self {
             compositor_state,
             shm_state,
@@ -90,6 +109,9 @@ impl KynexState {
             seat,
             output,
             socket_name,
+            xdg_shell_state,
+            space,
+            popups,
         })
     }
 
@@ -124,6 +146,20 @@ impl CompositorHandler for KynexState {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
+        self.popups.commit(surface);
+        for window in self.space.elements() {
+            let mut belongs = false;
+            window.with_surfaces(|s, _| {
+                if s == surface {
+                    belongs = true;
+                }
+            });
+            if belongs {
+                window.on_commit();
+                break;
+            }
+        }
+        self.space.refresh();
     }
 }
 
@@ -151,10 +187,62 @@ impl OutputHandler for KynexState {
     fn output_bound(&mut self, _output: Output, _wl_output: WlOutput) {}
 }
 
+impl XdgShellHandler for KynexState {
+    fn xdg_shell_state(&mut self) -> &mut XdgShellState {
+        &mut self.xdg_shell_state
+    }
+
+    fn new_toplevel(&mut self, surface: ToplevelSurface) {
+        surface.with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::Activated);
+        });
+        surface.send_configure();
+        let window = Window::new_wayland_window(surface);
+        self.space.map_element(window, (0, 0), true);
+    }
+
+    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+        if let Err(err) = self.popups.track_popup(PopupKind::from(surface.clone())) {
+            tracing::warn!(?err, "Failed to track popup in popup manager");
+            return;
+        }
+        if let Err(err) = surface.send_configure() {
+            tracing::warn!(?err, "Failed to send initial popup configure");
+        }
+    }
+
+    fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
+
+    fn reposition_request(
+        &mut self,
+        surface: PopupSurface,
+        _positioner: PositionerState,
+        token: u32,
+    ) {
+        surface.send_repositioned(token);
+    }
+
+    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        let window = self
+            .space
+            .elements()
+            .find(|w| w.toplevel() == Some(&surface))
+            .cloned();
+        if let Some(window) = window {
+            self.space.unmap_elem(&window);
+        }
+    }
+
+    fn popup_destroyed(&mut self, _surface: PopupSurface) {
+        self.popups.cleanup();
+    }
+}
+
 delegate_compositor!(KynexState);
 delegate_shm!(KynexState);
 delegate_seat!(KynexState);
 delegate_output!(KynexState);
+delegate_xdg_shell!(KynexState);
 
 #[cfg(test)]
 mod tests {
