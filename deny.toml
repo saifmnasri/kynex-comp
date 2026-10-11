@@ -3,7 +3,12 @@
 all-features = true
 
 [advisories]
-ignore = []   # every ignore needs a comment with reason and an expiry date
+# every ignore needs a comment with reason and an expiry date
+ignore = [
+  # Transitive dependency of smithay 0.7.0 (cgmath 0.18.0). Unmaintained notice only, no vulnerability.
+  # Review when upgrading to Smithay 0.8.0 or by 2026-12-31.
+  "RUSTSEC-2026-0196",
+]
 
 [licenses]
 allow = [
