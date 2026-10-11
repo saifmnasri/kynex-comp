@@ -51,3 +51,9 @@ Format: `ADR-NNNN — title — status — context — decision — consequences
 **Context:** Rule 02 forbids speculative abstractions and empty scaffolding crates before their real requirements exist.
 **Decision:** For Phase 1 (nested compositor), implement `kynex-comp` (binary and CLI), `kx-shell-core` (compositor state, backend integration, rendering loop, protocols), and `kx-test-utils` (test client harness). Crate decomposition into `kx-backend`, `kx-render`, and `kx-protocols` is deferred to Phase 2 when the DRM/KMS backend is introduced.
 **Consequences:** Keeps the codebase cohesive and under active testing without premature layer fragmentation, while enforcing clean internal module separation.
+
+## ADR-0013 — Nested Winit Output Transform (Transform::Flipped180) — Accepted
+**Context:** In Smithay's `GlesRenderer`, an internal vertical reflection matrix (`flip180`) is applied to orthographic projections to compensate for DRM/KMS hardware direct scanout conventions. In the nested Winit backend, rendering targets an `EGLSurface` window rather than a hardware scanout plane, causing `Transform::Normal` to render the window content upside-down.
+**Decision:** Configure the nested Winit output with `Transform::Flipped180`. This cancels out `GlesRenderer`'s internal reflection matrix ($[-1.0] \times [-1.0] = +1.0$), ensuring window contents, title bars, and pointer coordinates render right-side up. In Phase 2, real DRM/KMS outputs will use `Transform::Normal`.
+**Consequences:** Nested compositor output is rendered right-side up with 1:1 input coordinate and damage tracking alignment. Clean separation of nested vs DRM transform policy.
+

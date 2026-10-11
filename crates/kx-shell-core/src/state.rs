@@ -91,7 +91,12 @@ impl KynexState {
         output.set_preferred(mode);
         output.change_current_state(
             Some(mode),
-            Some(Transform::Normal),
+            // The nested winit backend renders into an EGLSurface window rather than
+            // a DRM KMS scanout plane. In Smithay's GlesRenderer, an internal flip180
+            // matrix is applied to compensate for DRM hardware scanout conventions.
+            // Using Transform::Flipped180 cancels this internal flip so that the nested
+            // window displays right-side up.
+            Some(Transform::Flipped180),
             Some(Scale::Integer(1)),
             Some(Point::from((0, 0))),
         );
@@ -300,6 +305,11 @@ mod tests {
         assert_eq!(current_mode.size, initial_size);
         assert_eq!(current_mode.refresh, 60_000);
         assert!(matches!(state.output.current_scale(), Scale::Integer(1)));
+        assert_eq!(
+            state.output.current_transform(),
+            Transform::Flipped180,
+            "Nested output must be Flipped180 to cancel GlesRenderer OpenGL scanout inversion"
+        );
 
         let new_size = Size::from((1920, 1080));
         state.update_output_size(new_size);
