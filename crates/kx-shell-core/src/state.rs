@@ -1,0 +1,187 @@
+// Copyright (c) 2026 Kynex. All rights reserved.
+// Proprietary and confidential. See LICENSE.
+
+//! Root compositor state and Wayland protocol delegates.
+
+use std::sync::OnceLock;
+
+use smithay::backend::renderer::utils::on_commit_buffer_handler;
+use smithay::input::keyboard::XkbConfig;
+use smithay::input::pointer::CursorImageStatus;
+use smithay::input::{Seat, SeatHandler, SeatState};
+use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
+use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::{Client, DisplayHandle};
+use smithay::utils::{Physical, Point, Size, Transform};
+use smithay::wayland::buffer::BufferHandler;
+use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
+use smithay::wayland::output::OutputHandler;
+use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::{delegate_compositor, delegate_output, delegate_seat, delegate_shm};
+
+use crate::client::ClientState;
+use crate::error::ShellError;
+
+/// Root state holding core protocol handlers and compositor resources.
+pub struct KynexState {
+    /// Wayland compositor protocol state (`wl_compositor` and `wl_subcompositor`).
+    pub compositor_state: CompositorState,
+    /// Shared memory protocol state (`wl_shm`).
+    pub shm_state: ShmState,
+    /// Seat management protocol state (`wl_seat`).
+    pub seat_state: SeatState<Self>,
+    /// Primary input seat.
+    pub seat: Seat<Self>,
+    /// Primary nested output.
+    pub output: Output,
+    /// Bound socket name (e.g. `wayland-1`).
+    pub socket_name: String,
+}
+
+impl KynexState {
+    /// Creates a new compositor state with core protocol globals.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ShellError`] if seat input device initialization fails.
+    pub fn new(
+        dh: &DisplayHandle,
+        socket_name: String,
+        initial_size: Size<i32, Physical>,
+    ) -> Result<Self, ShellError> {
+        let compositor_state = CompositorState::new::<Self>(dh);
+        let shm_state = ShmState::new::<Self>(dh, vec![]);
+        let mut seat_state = SeatState::new();
+        let mut seat = seat_state.new_wl_seat(dh, "kynex-seat-0");
+
+        // Add standard pointer and keyboard to the default seat
+        let _pointer = seat.add_pointer();
+        let _keyboard = seat.add_keyboard(XkbConfig::default(), 200, 200)?;
+
+        let output = Output::new(
+            "WL-1".to_string(),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "Kynex".to_string(),
+                model: "Nested-1".to_string(),
+            },
+        );
+
+        let mode = Mode {
+            size: initial_size,
+            refresh: 60_000,
+        };
+        output.set_preferred(mode);
+        output.change_current_state(
+            Some(mode),
+            Some(Transform::Normal),
+            Some(Scale::Integer(1)),
+            Some(Point::from((0, 0))),
+        );
+        let _global = output.create_global::<Self>(dh);
+
+        Ok(Self {
+            compositor_state,
+            shm_state,
+            seat_state,
+            seat,
+            output,
+            socket_name,
+        })
+    }
+
+    /// Updates the output geometry when the nested window is resized.
+    pub fn update_output_size(&self, new_size: Size<i32, Physical>) {
+        let mode = Mode {
+            size: new_size,
+            refresh: 60_000,
+        };
+        self.output
+            .change_current_state(Some(mode), None, None, None);
+    }
+}
+
+impl BufferHandler for KynexState {
+    fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
+}
+
+impl CompositorHandler for KynexState {
+    fn compositor_state(&mut self) -> &mut CompositorState {
+        &mut self.compositor_state
+    }
+
+    fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        if let Some(client_data) = client.get_data::<ClientState>() {
+            &client_data.compositor_state
+        } else {
+            static FALLBACK_CLIENT_STATE: OnceLock<CompositorClientState> = OnceLock::new();
+            FALLBACK_CLIENT_STATE.get_or_init(CompositorClientState::default)
+        }
+    }
+
+    fn commit(&mut self, surface: &WlSurface) {
+        on_commit_buffer_handler::<Self>(surface);
+    }
+}
+
+impl ShmHandler for KynexState {
+    fn shm_state(&self) -> &ShmState {
+        &self.shm_state
+    }
+}
+
+impl SeatHandler for KynexState {
+    type KeyboardFocus = WlSurface;
+    type PointerFocus = WlSurface;
+    type TouchFocus = WlSurface;
+
+    fn seat_state(&mut self) -> &mut SeatState<Self> {
+        &mut self.seat_state
+    }
+
+    fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
+
+    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {}
+}
+
+impl OutputHandler for KynexState {
+    fn output_bound(&mut self, _output: Output, _wl_output: WlOutput) {}
+}
+
+delegate_compositor!(KynexState);
+delegate_shm!(KynexState);
+delegate_seat!(KynexState);
+delegate_output!(KynexState);
+
+#[cfg(test)]
+mod tests {
+    use smithay::reexports::wayland_server::Display;
+
+    use super::*;
+
+    #[test]
+    fn test_kynex_state_initialization() {
+        let display: Display<KynexState> = Display::new().unwrap();
+        let initial_size = Size::from((1280, 720));
+        let state = KynexState::new(
+            &display.handle(),
+            "wayland-test-0".to_string(),
+            initial_size,
+        )
+        .unwrap();
+
+        assert_eq!(state.socket_name, "wayland-test-0");
+        let current_mode = state.output.current_mode().unwrap();
+        assert_eq!(current_mode.size, initial_size);
+        assert_eq!(current_mode.refresh, 60_000);
+        assert!(matches!(state.output.current_scale(), Scale::Integer(1)));
+
+        let new_size = Size::from((1920, 1080));
+        state.update_output_size(new_size);
+        let updated_mode = state.output.current_mode().unwrap();
+        assert_eq!(updated_mode.size, new_size);
+    }
+}

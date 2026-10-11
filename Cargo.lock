@@ -696,6 +696,7 @@ dependencies = [
  "smithay",
  "thiserror 2.0.21",
  "tracing",
+ "wayland-client",
 ]
 
 [[package]]

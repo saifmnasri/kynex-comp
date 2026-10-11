@@ -17,5 +17,8 @@ bitflags.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+[dev-dependencies]
+wayland-client.workspace = true
+
 [lints]
 workspace = true

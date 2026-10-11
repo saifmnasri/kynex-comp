@@ -1,19 +1,26 @@
 // Copyright (c) 2026 Kynex. All rights reserved.
 // Proprietary and confidential. See LICENSE.
 
-//! Nested compositor runner using the Smithay winit backend.
+//! Nested compositor runner using the Smithay winit backend and Calloop event loop.
 
+use std::os::fd::OwnedFd;
+use std::sync::Arc;
 use std::time::Duration;
 
-use calloop::EventLoop;
+use calloop::generic::Generic;
 use calloop::signals::{Signal, Signals};
+use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::backend::input::{InputEvent, KeyState, KeyboardKeyEvent};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::{Color32F, Frame, Renderer};
-use smithay::backend::winit::{self, WinitEvent, WinitGraphicsBackend, WinitInput};
+use smithay::backend::winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend, WinitInput};
+use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Rectangle, Transform};
+use smithay::wayland::socket::ListeningSocketSource;
 
+use crate::client::ClientState;
 use crate::error::ShellError;
+use crate::state::KynexState;
 
 /// Linux input event codes for emergency exit key combinations.
 const KEY_ESC: u32 = 1;
@@ -77,6 +84,8 @@ struct NestedLoopState {
     max_frames: Option<u64>,
     bg_color: Color32F,
     last_error: Option<ShellError>,
+    state: KynexState,
+    display: Display<KynexState>,
 }
 
 impl NestedLoopState {
@@ -101,6 +110,11 @@ impl NestedLoopState {
     }
 
     fn render_frame(&mut self) -> Result<(), ShellError> {
+        // Dispatch pending client messages before compositing
+        self.display
+            .dispatch_clients(&mut self.state)
+            .map_err(|e| ShellError::ClientDispatch(e.to_string()))?;
+
         let window_size = self.backend.window_size();
         let damage = [Rectangle::from_size(window_size)];
 
@@ -114,13 +128,17 @@ impl NestedLoopState {
                 .clear(self.bg_color, &damage)
                 .map_err(|e| ShellError::Render(format!("{e:?}")))?;
 
-            // SyncPoint returned by frame.finish; on nested winit backend buffer swap handles synchronization.
             let _sync_point = frame
                 .finish()
                 .map_err(|e| ShellError::Render(format!("{e:?}")))?;
         }
 
         self.backend.submit(Some(&damage))?;
+
+        // Flush protocol replies to clients after frame submission
+        self.display
+            .flush_clients()
+            .map_err(|e| ShellError::ClientDispatch(e.to_string()))?;
 
         self.frame_count = self.frame_count.saturating_add(1);
         if let Some(max) = self.max_frames {
@@ -139,6 +157,83 @@ impl NestedLoopState {
     }
 }
 
+fn register_event_sources(
+    loop_handle: &LoopHandle<'_, NestedLoopState>,
+    listening_socket: ListeningSocketSource,
+    poll_fd: OwnedFd,
+    winit_event_loop: WinitEventLoop,
+) -> Result<(), ShellError> {
+    let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM])?;
+    loop_handle
+        .insert_source(signals, |signal_event, (), loop_state| {
+            tracing::info!(signal = ?signal_event.signal(), "Shutdown signal received");
+            loop_state.running = false;
+        })
+        .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
+
+    loop_handle
+        .insert_source(listening_socket, |stream, (), loop_state| {
+            let client_data = Arc::new(ClientState::default());
+            match loop_state
+                .display
+                .handle()
+                .insert_client(stream, client_data)
+            {
+                Ok(client) => tracing::info!(?client, "Accepted new Wayland client connection"),
+                Err(err) => tracing::error!(%err, "Failed to register accepted Wayland client"),
+            }
+        })
+        .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
+
+    loop_handle
+        .insert_source(
+            Generic::new(poll_fd, Interest::READ, Mode::Level),
+            |_readiness, _file, loop_state| {
+                if let Err(err) = loop_state.display.dispatch_clients(&mut loop_state.state) {
+                    tracing::error!(%err, "Error dispatching Wayland clients on poll event");
+                }
+                Ok(PostAction::Continue)
+            },
+        )
+        .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
+
+    loop_handle
+        .insert_source(winit_event_loop, |event, (), loop_state| {
+            handle_winit_event(&event, loop_state);
+        })
+        .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
+
+    Ok(())
+}
+
+fn handle_winit_event(event: &WinitEvent, loop_state: &mut NestedLoopState) {
+    match event {
+        WinitEvent::CloseRequested => {
+            tracing::info!("Window close requested; shutting down nested compositor");
+            loop_state.running = false;
+        }
+        WinitEvent::Redraw => {
+            if let Err(err) = loop_state.render_frame() {
+                tracing::error!(error = %err, "Failed to render frame in nested backend");
+                loop_state.last_error = Some(err);
+                loop_state.running = false;
+            }
+        }
+        WinitEvent::Resized { size, scale_factor } => {
+            tracing::debug!(?size, scale_factor, "Nested window resized");
+            loop_state.state.update_output_size(*size);
+            loop_state.backend.window().request_redraw();
+        }
+        WinitEvent::Focus(focused) => {
+            tracing::debug!(focused, "Nested window focus changed");
+        }
+        WinitEvent::Input(InputEvent::Keyboard { event }) => {
+            loop_state.handle_keyboard_event(event);
+        }
+        WinitEvent::Input(_) => {}
+    }
+}
+
 /// Runs the nested compositor with the winit backend.
 ///
 /// # Errors
@@ -153,51 +248,27 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
     let [r, g, b, a] = options.config.background_color;
     let bg_color = Color32F::new(r, g, b, a);
 
+    let mut display: Display<KynexState> = Display::new()?;
+    let listening_socket = ListeningSocketSource::new_auto()?;
+    let socket_name = listening_socket
+        .socket_name()
+        .to_string_lossy()
+        .into_owned();
+
+    tracing::info!(socket = %socket_name, "Wayland listening socket bound");
+
+    let state = KynexState::new(&display.handle(), socket_name, backend.window_size())?;
+    let poll_fd = display.backend().poll_fd().try_clone_to_owned()?;
+
     let mut event_loop: EventLoop<'_, NestedLoopState> = EventLoop::try_new()?;
-    let loop_handle = event_loop.handle();
+    register_event_sources(
+        &event_loop.handle(),
+        listening_socket,
+        poll_fd,
+        winit_event_loop,
+    )?;
 
-    // Register OS signal handler (SIGINT, SIGTERM)
-    let signals = Signals::new(&[Signal::SIGINT, Signal::SIGTERM])?;
-    loop_handle
-        .insert_source(signals, |signal_event, (), state| {
-            tracing::info!(signal = ?signal_event.signal(), "Shutdown signal received");
-            state.running = false;
-        })
-        .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
-
-    // Register Winit event loop
-    loop_handle
-        .insert_source(winit_event_loop, |event, (), state| {
-            match event {
-                WinitEvent::CloseRequested => {
-                    tracing::info!("Window close requested; shutting down nested compositor");
-                    state.running = false;
-                }
-                WinitEvent::Redraw => {
-                    if let Err(err) = state.render_frame() {
-                        tracing::error!(error = %err, "Failed to render frame in nested backend");
-                        state.last_error = Some(err);
-                        state.running = false;
-                    }
-                }
-                WinitEvent::Resized { size, scale_factor } => {
-                    tracing::debug!(?size, scale_factor, "Nested window resized");
-                    state.backend.window().request_redraw();
-                }
-                WinitEvent::Focus(focused) => {
-                    tracing::debug!(focused, "Nested window focus changed");
-                }
-                WinitEvent::Input(InputEvent::Keyboard { event }) => {
-                    state.handle_keyboard_event(&event);
-                }
-                WinitEvent::Input(_) => {
-                    // Other input events will be routed in Milestone 1E
-                }
-            }
-        })
-        .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
-
-    let mut state = NestedLoopState {
+    let mut loop_state = NestedLoopState {
         running: true,
         backend,
         modifiers: EmergencyModifiers::default(),
@@ -205,23 +276,26 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
         max_frames: options.max_frames,
         bg_color,
         last_error: None,
+        state,
+        display,
     };
 
-    // Request initial redraw
-    state.backend.window().request_redraw();
-
+    loop_state.backend.window().request_redraw();
     tracing::info!("Entering nested compositor main event loop");
 
-    while state.running {
-        event_loop.dispatch(Some(Duration::from_millis(16)), &mut state)?;
+    while loop_state.running {
+        event_loop.dispatch(Some(Duration::from_millis(16)), &mut loop_state)?;
+        if let Err(err) = loop_state.display.flush_clients() {
+            tracing::error!(%err, "Failed to flush Wayland clients");
+        }
     }
 
     tracing::info!(
-        total_frames = state.frame_count,
+        total_frames = loop_state.frame_count,
         "Exited nested compositor main event loop cleanly"
     );
 
-    if let Some(err) = state.last_error {
+    if let Some(err) = loop_state.last_error {
         return Err(err);
     }
 

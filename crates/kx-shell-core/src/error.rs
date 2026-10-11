@@ -32,10 +32,42 @@ pub enum ShellError {
     /// Signal handling registration error.
     #[error("signal error: {0}")]
     Signal(#[from] calloop::signals::SignalError),
+
+    /// Wayland display initialization error.
+    #[error("failed to initialize Wayland display: {0}")]
+    DisplayInit(String),
+
+    /// Wayland socket binding error.
+    #[error("failed to bind Wayland listening socket: {0}")]
+    SocketBind(String),
+
+    /// Wayland client dispatch error.
+    #[error("client dispatch error: {0}")]
+    ClientDispatch(String),
+
+    /// Seat keyboard initialization error.
+    #[error("keyboard initialization error: {0}")]
+    Keyboard(#[from] smithay::input::keyboard::Error),
+
+    /// Underlying I/O error.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 impl From<smithay::backend::winit::Error> for ShellError {
     fn from(err: smithay::backend::winit::Error) -> Self {
         Self::WinitInit(err.to_string())
+    }
+}
+
+impl From<smithay::reexports::wayland_server::backend::InitError> for ShellError {
+    fn from(err: smithay::reexports::wayland_server::backend::InitError) -> Self {
+        Self::DisplayInit(err.to_string())
+    }
+}
+
+impl From<smithay::reexports::wayland_server::BindError> for ShellError {
+    fn from(err: smithay::reexports::wayland_server::BindError) -> Self {
+        Self::SocketBind(err.to_string())
     }
 }
