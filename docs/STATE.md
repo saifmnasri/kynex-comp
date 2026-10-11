@@ -23,7 +23,7 @@
 - **Phase 2 (DRM/KMS Real Hardware Backend):**
   - **Milestone 2A (Dependency & Crate Foundations):** Smithay DRM/GBM/libseat/udev/libinput features enabled, `xcursor = "0.3.11"` added, `udev` LGPL-2.1 exception added to `deny.toml` (approved), `kx-input` pure-logic crate created with `BindingMatcher`, `KeyModifiers`, `KeySym`, `CompositorAction`, ADR-0014 through ADR-0019 recorded.
   - **Milestone 2B (Safety Net & Observability Foundation):**
-    - Step 2B.1: `kx-input` binding matcher wired into `KynexState` and nested winit event loop (Ctrl+Shift+Escape & Ctrl+Alt+Backspace).
+    - Step 2B.1: `kx-input` binding matcher wired into `KynexState` and nested winit event loop with XKB keysym interception via `keyboard.input` filter (resolving winit `+8` scancode offset) supporting `Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, and `Ctrl+Shift+Q` (rollover-safe for MacBook keyboard matrix ghosting).
     - Step 2B.2: `sd_notify` (`READY=1`, `WATCHDOG=1`, `STOPPING=1`) implemented in `kx-common::systemd` with unit tests using mock Unix datagram sockets.
     - Step 2B.3: `--exit-after <duration>` CLI timeout flag, Calloop timer integration, and child process environment sanitation (`KYNEX_FAULT` stripped).
     - Step 2B.4: Pure-logic `FrameClock` state machine (`Idle -> Queued -> WaitingForVBlank -> Idle`) with frame coalescing and moving-max render estimation in `kx-shell-core::frame_clock`.
@@ -31,7 +31,7 @@
     - Step 2B.6: Draft systemd user unit in `docs/kynex-comp.service`.
 
 ## In progress
-- Milestone 2B verification & user review stop point before Milestone 2C.
+- Milestone 2B user drill: verify `Ctrl+Shift+Q` in nested compositor.
 
 ## Next
 - STOP: Present Milestone 2B verification checklist to user.
