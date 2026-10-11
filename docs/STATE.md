@@ -23,7 +23,7 @@
   - **Nested Output Orientation (Y-axis Inversion):** Configured `Transform::Flipped180` on the nested Winit output to cancel `GlesRenderer`'s internal `flip180` projection matrix (which assumes DRM hardware scanout), ensuring window contents and input coordinates render 100% right-side up. Verified visually with `weston-terminal`.
 
 ## In progress
-- Verification of nested output orientation fix on branch `fix/nested-output-orientation`.
+- (none — Phase 1 and post-phase-1 nested orientation fix complete and visually verified live with weston-terminal)
 
 ## Next
 1. Human review and merge of `feat/phase-1-nested-compositor` into `main`.
