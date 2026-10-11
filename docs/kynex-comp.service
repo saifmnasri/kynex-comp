@@ -1,0 +1,44 @@
+# Copyright (c) 2026 Kynex. All rights reserved.
+# Proprietary and confidential. See LICENSE.
+#
+# Draft systemd user service unit for KynexComp.
+# Ships with KynexOS desktop session integration.
+#
+# Rule 06 Stability and Supervision:
+# - Type=notify: Compositor announces readiness via sd_notify("READY=1")
+# - WatchdogSec=10: Compositor heartbeat via sd_notify("WATCHDOG=1"); systemd restarts if stalled
+# - Restart=on-failure: Automatic restart on crash, unhandled panic, or watchdog timeout
+# - RestartSec=1: Fast session restart rate-limited by systemd burst protection
+
+[Unit]
+Description=KynexComp Wayland Compositor (KynexOS)
+Documentation=https://github.com/saifmnasri/kynex-comp
+After=systemd-user-sessions.service
+Before=graphical-session.target
+BindsTo=graphical-session.target
+
+[Service]
+Type=notify
+NotifyAccess=all
+WatchdogSec=10
+Restart=on-failure
+RestartSec=1
+TimeoutStartSec=15
+TimeoutStopSec=10
+ExecStart=/usr/bin/kynex-comp --backend drm
+Slice=session.slice
+
+# Desktop environment integration defaults
+Environment=XDG_CURRENT_DESKTOP=Kynex
+Environment=MOZ_ENABLE_WAYLAND=1
+Environment=QT_QPA_PLATFORM=wayland
+Environment=GDK_BACKEND=wayland
+
+# Security hardening: isolate user session processes
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%t %h/.local/state/kynex
+
+[Install]
+WantedBy=graphical-session.target

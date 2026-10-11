@@ -3,7 +3,7 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 2 — Real Hardware Backend (DRM/KMS)
-**Last updated:** 2026-10-11 — Phase 2 started on branch `feat/phase-2-drm-backend`. Milestone 2A complete: Smithay DRM/GBM/libseat/udev/libinput features enabled, udev LGPL-2.1 exception added to deny.toml, xcursor added, kx-input pure-logic crate created with BindingMatcher and emergency exit shortcuts, ADR-0014 through ADR-0019 recorded. `just check` green (fmt, clippy, 34 tests, cargo-deny).
+**Last updated:** 2026-10-11 — Phase 2 in progress on branch `feat/phase-2-drm-backend`. Milestone 2A & 2B complete: safety nets, sd_notify, frame clock, exit-after timeout, fault-injection harness, and systemd service unit implemented and verified. `just check` green (fmt, clippy, 48 tests, cargo-deny).
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -22,24 +22,26 @@
   - **Nested Output Orientation (Y-axis Inversion):** Configured `Transform::Flipped180` on the nested Winit output to cancel `GlesRenderer`'s internal `flip180` projection matrix (which assumes DRM hardware scanout), ensuring window contents and input coordinates render 100% right-side up. Verified visually with `weston-terminal`.
 - **Phase 2 (DRM/KMS Real Hardware Backend):**
   - **Milestone 2A (Dependency & Crate Foundations):** Smithay DRM/GBM/libseat/udev/libinput features enabled, `xcursor = "0.3.11"` added, `udev` LGPL-2.1 exception added to `deny.toml` (approved), `kx-input` pure-logic crate created with `BindingMatcher`, `KeyModifiers`, `KeySym`, `CompositorAction`, ADR-0014 through ADR-0019 recorded.
+  - **Milestone 2B (Safety Net & Observability Foundation):**
+    - Step 2B.1: `kx-input` binding matcher wired into `KynexState` and nested winit event loop (Ctrl+Shift+Escape & Ctrl+Alt+Backspace).
+    - Step 2B.2: `sd_notify` (`READY=1`, `WATCHDOG=1`, `STOPPING=1`) implemented in `kx-common::systemd` with unit tests using mock Unix datagram sockets.
+    - Step 2B.3: `--exit-after <duration>` CLI timeout flag, Calloop timer integration, and child process environment sanitation (`KYNEX_FAULT` stripped).
+    - Step 2B.4: Pure-logic `FrameClock` state machine (`Idle -> Queued -> WaitingForVBlank -> Idle`) with frame coalescing and moving-max render estimation in `kx-shell-core::frame_clock`.
+    - Step 2B.5: Feature-gated `fault-injection` test harness (`park_timeout` hang loop, single scoped panic suppression, release `compile_error!`, simulated GPU loss `SwapBuffersError::ContextLost`, strict token parser, `+fault-injection` in `--version`).
+    - Step 2B.6: Draft systemd user unit in `docs/kynex-comp.service`.
 
 ## In progress
-- **Milestone 2B (Safety Net & Test Harness):**
-  - Step 2B.1: Wire `kx-input` binding matcher into nested and DRM event loops.
-  - Step 2B.2: Implement `sd_notify` (`READY=1`, `WATCHDOG=1`) in `kx-common`.
-  - Step 2B.3: Add `--exit-after <duration>` CLI timeout flag in `kynex-comp`.
-  - Step 2B.4: Frame clock pure-logic state machine (`Idle -> Queued -> WaitingForVBlank -> Idle`).
-  - Step 2B.5: Fault-injection test harness (feature-gated, park_timeout hang, scoped clippy panic, debug_assertions guard, strict spec parser).
-  - Step 2B.6: Draft systemd user service unit.
+- Milestone 2B verification & user review stop point before Milestone 2C.
 
 ## Next
-- Complete Milestone 2B, then STOP for manual test checklist.
-- Milestone 2C: DRM Device & Output Management (libseat session, udev primary GPU, DRM device, scanout modes).
+- STOP: Present Milestone 2B verification checklist to user.
+- Milestone 2C: Read-Only DRM Device & Session Enumeration (libseat session, udev primary GPU, DRM node open, read-only connector/mode inspection).
 - Milestone 2D: Libinput & Input Pipeline (device discovery, pointer motion, keyboard dispatch via kx-input).
 - Milestone 2E: Rendering Loop & Damage Tracking (GBM buffers, EGL/GLES2 scanout, hardware cursor plane, page flip loop).
 - Milestone 2F: Polishing, Benchmarks & Phase Gate.
 
 ## Verify commands
 - `just check`
-- `cargo test --workspace --all-features --locked`
-- `just run-nested` or `cargo run -p kynex-comp -- --backend nested --max-frames 30`
+- `cargo test --workspace --features fault-injection --locked`
+- `cargo check --release` (verifies release build succeeds without fault-injection)
+- `cargo run -p kynex-comp -- --backend nested --exit-after 2s`

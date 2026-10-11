@@ -52,6 +52,8 @@ pub struct KynexState {
     pub space: Space<Window>,
     /// Popup manager tracking popup relationships.
     pub popups: PopupManager,
+    /// Active compositor key binding matcher.
+    pub binding_matcher: kx_input::BindingMatcher,
 }
 
 impl KynexState {
@@ -106,6 +108,7 @@ impl KynexState {
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
         let popups = PopupManager::default();
+        let binding_matcher = kx_input::BindingMatcher::with_defaults();
 
         Ok(Self {
             compositor_state,
@@ -117,6 +120,7 @@ impl KynexState {
             xdg_shell_state,
             space,
             popups,
+            binding_matcher,
         })
     }
 
@@ -315,5 +319,22 @@ mod tests {
         state.update_output_size(new_size);
         let updated_mode = state.output.current_mode().unwrap();
         assert_eq!(updated_mode.size, new_size);
+    }
+
+    #[test]
+    fn test_binding_matcher_emergency_exit() {
+        let display = Display::<KynexState>::new().unwrap();
+        let state = KynexState::new(
+            &display.handle(),
+            "wayland-test-exit".to_string(),
+            Size::from((800, 600)),
+        )
+        .unwrap();
+
+        let action = state.binding_matcher.matches(
+            kx_input::KeyModifiers::CTRL | kx_input::KeyModifiers::SHIFT,
+            kx_input::KeySym::ESCAPE,
+        );
+        assert_eq!(action, Some(&kx_input::CompositorAction::Quit));
     }
 }

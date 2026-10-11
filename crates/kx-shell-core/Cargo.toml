@@ -23,5 +23,9 @@ xcursor.workspace = true
 wayland-client.workspace = true
 wayland-protocols.workspace = true
 
+[features]
+fault-injection = []
+
 [lints]
 workspace = true
+
