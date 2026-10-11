@@ -1,0 +1,21 @@
+[package]
+name = "kx-shell-core"
+description = "Compositor state, winit backend, rendering and protocol dispatch for KynexComp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kx-common.workspace = true
+kx-config.workspace = true
+smithay.workspace = true
+calloop.workspace = true
+slotmap.workspace = true
+bitflags.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true
