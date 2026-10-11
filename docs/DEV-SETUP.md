@@ -3,6 +3,7 @@
 ## System packages (names vary by distro)
 
 Debian/Ubuntu-style: `build-essential pkg-config libwayland-dev libxkbcommon-dev libinput-dev libudev-dev libseat-dev libgbm-dev libegl-dev libgles-dev libdrm-dev libdisplay-info-dev libpixman-1-dev`
+Fedora-style: `gcc gcc-c++ make pkgconf-pkg-config just wayland-devel libxkbcommon-devel libinput-devel systemd-devel libseat-devel mesa-libgbm-devel mesa-libEGL-devel mesa-libGLES-devel libdrm-devel libdisplay-info-devel pixman-devel`
 Arch-style: `base-devel pkgconf wayland libxkbcommon libinput systemd-libs seatd mesa libdrm libdisplay-info pixman`
 Test clients: `foot` (terminal), `weston-info`, `wev`, `wl-clipboard`, a browser.
 

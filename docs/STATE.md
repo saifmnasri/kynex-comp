@@ -3,7 +3,7 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 0 — Foundation (Completed, ready for Phase 1)
-**Last updated:** 2026-10-10 — Phase 0 completed: toolchain pinned, dependencies locked, kx-config and kx-common implemented and tested with full `just check` green.
+**Last updated:** 2026-10-11 — Migration to Fedora Linux 44 verified: pinned toolchain 1.99.0 and system packages installed, stale Darwin Mach-O artifacts cleared, DEV-SETUP updated, full `just check` green (fmt, clippy, 16 tests, deny).
 
 ## Done
 - **Pre-Step 0:** Toolchain and environment verified, git repo initialized on `main`, `feat/phase-0-foundation` branch created.
@@ -13,7 +13,8 @@
 - **Step 4:** Implemented `crates/kx-config`: typed structs (`GeneralConfig`, `InputConfig`, `AppearanceConfig`, `Config`), defaults, semantic range validation, 256 KiB size cap, two-pass `config_version` parser.
 - **Step 5:** Added unit tests and property-based tests (`proptest`) for `kx-config` covering minimal/full configs, unknown fields, boundary tests at 256 KiB and +1 byte, deeply nested inputs, and invalid versions.
 - **Step 6:** Implemented `crates/kx-common` subsystems: `init_logging` (`tracing-subscriber` with `EnvFilter`), `install_panic_hook` with structured crash reports (`crash-{pid}-{timestamp}.log`), Unix 0o700/0o600 permissions at creation, `force_capture()` backtraces, previous hook chaining, and unit/integration tests.
-- **Verification:** All 16 workspace tests pass (`cargo test`), `cargo fmt`, `cargo clippy -D warnings`, `cargo deny check` all green via `just check`.
+- **Step 7:** Fedora Linux 44 migration verified: system tools (`gcc`, `make`, `just`, Wayland headers) and `rustup` configured, `docs/DEV-SETUP.md` updated with Fedora `dnf` package list, `target/` purged of stale Mach-O binaries.
+- **Verification:** All 16 workspace tests pass (`cargo test`), `cargo fmt`, `cargo clippy -D warnings`, `cargo deny check` all green via `just check` on Fedora Linux.
 
 ## In progress
 - (none — Phase 0 complete)
