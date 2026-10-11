@@ -16,7 +16,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{Client, DisplayHandle};
+use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Physical, Point, Serial, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
@@ -141,6 +141,29 @@ impl CompositorHandler for KynexState {
         } else {
             static FALLBACK_CLIENT_STATE: OnceLock<CompositorClientState> = OnceLock::new();
             FALLBACK_CLIENT_STATE.get_or_init(CompositorClientState::default)
+        }
+    }
+
+    fn new_surface(&mut self, surface: &WlSurface) {
+        if let Some(client) = surface.client() {
+            if let Some(client_data) = client.get_data::<ClientState>() {
+                if !client_data.try_increment_surface() {
+                    tracing::warn!(
+                        "Client exceeded maximum surface quota ({}); disconnecting",
+                        client_data.limits.max_surfaces
+                    );
+                    // 2 corresponds to wl_display::Error::NoMemory in the Wayland protocol specification
+                    surface.post_error(2u32, "Maximum surface quota exceeded");
+                }
+            }
+        }
+    }
+
+    fn destroyed(&mut self, surface: &WlSurface) {
+        if let Some(client) = surface.client() {
+            if let Some(client_data) = client.get_data::<ClientState>() {
+                client_data.decrement_surface();
+            }
         }
     }
 

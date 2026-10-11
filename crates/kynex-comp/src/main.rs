@@ -116,7 +116,7 @@ fn run() -> anyhow::Result<()> {
 
     tracing::info!(backend = %parsed.backend, "Starting KynexComp");
 
-    if parsed.backend != "winit" {
+    if parsed.backend != "winit" && parsed.backend != "nested" {
         anyhow::bail!(
             "Only the 'winit' nested backend is supported in Phase 1 (requested: {})",
             parsed.backend
