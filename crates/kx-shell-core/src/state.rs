@@ -197,8 +197,13 @@ impl XdgShellHandler for KynexState {
             state.states.set(xdg_toplevel::State::Activated);
         });
         surface.send_configure();
-        let window = Window::new_wayland_window(surface);
+        let window = Window::new_wayland_window(surface.clone());
         self.space.map_element(window, (0, 0), true);
+
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+            keyboard.set_focus(self, Some(surface.wl_surface().clone()), serial);
+        }
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -223,6 +228,12 @@ impl XdgShellHandler for KynexState {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            if keyboard.current_focus().as_ref() == Some(surface.wl_surface()) {
+                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                keyboard.set_focus(self, None, serial);
+            }
+        }
         let window = self
             .space
             .elements()

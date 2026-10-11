@@ -10,14 +10,21 @@ use std::time::{Duration, Instant};
 use calloop::generic::Generic;
 use calloop::signals::{Signal, Signals};
 use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
-use smithay::backend::input::{InputEvent, KeyState, KeyboardKeyEvent};
+use smithay::backend::input::{
+    Axis, ButtonState, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent,
+    PointerButtonEvent, PointerMotionAbsoluteEvent,
+};
 use smithay::backend::renderer::Color32F;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend, WinitInput};
+use smithay::desktop::WindowSurfaceType;
 use smithay::desktop::space::render_output;
+use smithay::input::keyboard::FilterResult;
+use smithay::input::pointer::{AxisFrame, ButtonEvent, MotionEvent};
 use smithay::reexports::wayland_server::Display;
+use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 use smithay::wayland::socket::ListeningSocketSource;
 
 use crate::client::ClientState;
@@ -83,6 +90,7 @@ struct NestedLoopState {
     backend: WinitGraphicsBackend<GlesRenderer>,
     damage_tracker: OutputDamageTracker,
     modifiers: EmergencyModifiers,
+    pointer_location: Point<f64, Logical>,
     frame_count: u64,
     max_frames: Option<u64>,
     bg_color: Color32F,
@@ -93,7 +101,10 @@ struct NestedLoopState {
 }
 
 impl NestedLoopState {
-    fn handle_keyboard_event(&mut self, event: &impl KeyboardKeyEvent<WinitInput>) {
+    fn handle_keyboard_emergency_exit(
+        &mut self,
+        event: &impl KeyboardKeyEvent<WinitInput>,
+    ) -> bool {
         let key = event.key_code().raw();
         let is_pressed = event.state() == KeyState::Pressed;
 
@@ -103,13 +114,125 @@ impl NestedLoopState {
             KEY_LEFTALT | KEY_RIGHTALT => self.modifiers.alt = is_pressed,
             KEY_ESC if is_pressed && self.modifiers.ctrl && self.modifiers.shift => {
                 tracing::info!("Emergency exit key combination triggered (Ctrl+Shift+Escape)");
-                self.running = false;
+                return true;
             }
             KEY_BACKSPACE if is_pressed && self.modifiers.ctrl && self.modifiers.alt => {
                 tracing::info!("Emergency exit key combination triggered (Ctrl+Alt+Backspace)");
-                self.running = false;
+                return true;
             }
             _ => {}
+        }
+        false
+    }
+
+    fn handle_keyboard_event(&mut self, event: &impl KeyboardKeyEvent<WinitInput>) {
+        if self.handle_keyboard_emergency_exit(event) {
+            self.running = false;
+            return;
+        }
+
+        let serial = SERIAL_COUNTER.next_serial();
+        if let Some(keyboard) = self.state.seat.get_keyboard() {
+            keyboard.input::<(), _>(
+                &mut self.state,
+                event.key_code(),
+                event.state(),
+                serial,
+                event.time_msec(),
+                |_data, _modifiers, _keysym| FilterResult::Forward,
+            );
+        }
+    }
+
+    fn handle_pointer_motion_absolute(
+        &mut self,
+        event: &impl PointerMotionAbsoluteEvent<WinitInput>,
+    ) {
+        let output_size = self
+            .state
+            .output
+            .current_mode()
+            .map(|m| m.size)
+            .unwrap_or_default();
+        self.pointer_location = event.position_transformed(output_size.to_logical(1));
+        let serial = SERIAL_COUNTER.next_serial();
+
+        let under = self
+            .state
+            .space
+            .element_under(self.pointer_location)
+            .and_then(|(window, window_loc)| {
+                let relative = self.pointer_location - window_loc.to_f64();
+                window.surface_under(relative, WindowSurfaceType::ALL).map(
+                    |(surface, surface_offset)| (surface, (window_loc + surface_offset).to_f64()),
+                )
+            });
+
+        if let Some(pointer) = self.state.seat.get_pointer() {
+            pointer.motion(
+                &mut self.state,
+                under,
+                &MotionEvent {
+                    location: self.pointer_location,
+                    serial,
+                    time: event.time_msec(),
+                },
+            );
+            pointer.frame(&mut self.state);
+        }
+    }
+
+    fn handle_pointer_button(&mut self, event: &impl PointerButtonEvent<WinitInput>) {
+        let serial = SERIAL_COUNTER.next_serial();
+        let button = event.button_code();
+        let state = event.state();
+        let time = event.time_msec();
+
+        if state == ButtonState::Pressed {
+            if let Some((window, _loc)) = self.state.space.element_under(self.pointer_location) {
+                let window = window.clone();
+                self.state.space.raise_element(&window, true);
+                if let Some(surface) = window.toplevel().map(|t| t.wl_surface().clone()) {
+                    if let Some(keyboard) = self.state.seat.get_keyboard() {
+                        keyboard.set_focus(&mut self.state, Some(surface), serial);
+                    }
+                }
+            }
+        }
+
+        if let Some(pointer) = self.state.seat.get_pointer() {
+            pointer.button(
+                &mut self.state,
+                &ButtonEvent {
+                    serial,
+                    time,
+                    button,
+                    state,
+                },
+            );
+            pointer.frame(&mut self.state);
+        }
+    }
+
+    fn handle_pointer_axis(&mut self, event: &impl PointerAxisEvent<WinitInput>) {
+        let mut frame = AxisFrame::new(event.time_msec()).source(event.source());
+
+        for axis in [Axis::Horizontal, Axis::Vertical] {
+            if let Some(amount) = event.amount(axis) {
+                frame = frame.value(axis, amount);
+            }
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "discrete v120 scroll step count fits within standard i32"
+            )]
+            if let Some(amount_v120) = event.amount_v120(axis) {
+                frame = frame.v120(axis, amount_v120 as i32);
+            }
+        }
+
+        if let Some(pointer) = self.state.seat.get_pointer() {
+            pointer.axis(&mut self.state, frame);
+            pointer.frame(&mut self.state);
         }
     }
 
@@ -249,6 +372,15 @@ fn handle_winit_event(event: &WinitEvent, loop_state: &mut NestedLoopState) {
         WinitEvent::Input(InputEvent::Keyboard { event }) => {
             loop_state.handle_keyboard_event(event);
         }
+        WinitEvent::Input(InputEvent::PointerMotionAbsolute { event }) => {
+            loop_state.handle_pointer_motion_absolute(event);
+        }
+        WinitEvent::Input(InputEvent::PointerButton { event }) => {
+            loop_state.handle_pointer_button(event);
+        }
+        WinitEvent::Input(InputEvent::PointerAxis { event }) => {
+            loop_state.handle_pointer_axis(event);
+        }
         WinitEvent::Input(_) => {}
     }
 }
@@ -294,6 +426,7 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
         backend,
         damage_tracker,
         modifiers: EmergencyModifiers::default(),
+        pointer_location: Point::from((0.0, 0.0)),
         frame_count: 0,
         max_frames: options.max_frames,
         bg_color,
