@@ -41,3 +41,6 @@ See the layout and dependency DAG in rule 02. Add one line per crate here when i
 |-------|-------|-------------|----------------|
 | `kx-common` | leaf | yes | shared leaf types, logging init, structured panic hook |
 | `kx-config` | config | yes | typed configuration, validation, defaults, two-pass parsing |
+| `kx-input` | input | yes | pure logic key bindings, modifier handling and action dispatch |
+| `kx-shell-core` | core | no | compositor state, protocols, window management, and nested/DRM backends |
+| `kynex-comp` | binary | no | entrypoint, CLI options, signal handling, and main event loop |

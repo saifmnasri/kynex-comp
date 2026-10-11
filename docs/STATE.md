@@ -2,8 +2,8 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 1 — Minimal Nested Compositor (Completed, ready for Phase 2)
-**Last updated:** 2026-10-11 — Phase 1 completed and verified: Smithay 0.7.0 pinned, Winit nested backend with GLES2 virgl acceleration, emergency exit keybindings, core Wayland globals & XDG shell, seat input routing (keyboard, pointer motion, click-to-focus, window drag), anti-DoS surface quotas, hostile client resilience suite, live nested run verified in Fedora ARM64 UTM session, `just check` green (fmt, clippy -D warnings, 32 tests, cargo deny).
+**Current phase:** 2 — Real Hardware Backend (DRM/KMS)
+**Last updated:** 2026-10-11 — Phase 2 started on branch `feat/phase-2-drm-backend`. Milestone 2A complete: Smithay DRM/GBM/libseat/udev/libinput features enabled, udev LGPL-2.1 exception added to deny.toml, xcursor added, kx-input pure-logic crate created with BindingMatcher and emergency exit shortcuts, ADR-0014 through ADR-0019 recorded. `just check` green (fmt, clippy, 34 tests, cargo-deny).
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -18,28 +18,26 @@
   - **Milestone 1D (XDG Shell & Damage Tracking):** `xdg_wm_base` (surfaces, toplevels, popups), `Space<Window>` window management, Smithay `OutputDamageTracker` with selective region compositing, throttled `wl_surface.frame` callbacks.
   - **Milestone 1E (Seat & Input Routing):** Winit keyboard and pointer event routing, xkbcommon keymap loading, pointer focus and window-under-cursor hit detection, click-to-focus and raise, interactive window dragging with clamped coordinates.
   - **Milestone 1F (Hostile Clients & Anti-DoS):** Strict per-client surface quota enforcement with protocol error 2 (`wl_display::Error::NoMemory`) and client disconnect, automatic quota reclamation on surface destroy, hostile client integration suite (quota exhaustion, churn connect/disconnect drop, unconfigured commits), live nested run verified in Fedora ARM64 UTM GNOME Wayland session (`target/debug/kynex-comp --backend nested --max-frames 10`).
-
 - **Post-Phase 1 Fixes:**
   - **Nested Output Orientation (Y-axis Inversion):** Configured `Transform::Flipped180` on the nested Winit output to cancel `GlesRenderer`'s internal `flip180` projection matrix (which assumes DRM hardware scanout), ensuring window contents and input coordinates render 100% right-side up. Verified visually with `weston-terminal`.
+- **Phase 2 (DRM/KMS Real Hardware Backend):**
+  - **Milestone 2A (Dependency & Crate Foundations):** Smithay DRM/GBM/libseat/udev/libinput features enabled, `xcursor = "0.3.11"` added, `udev` LGPL-2.1 exception added to `deny.toml` (approved), `kx-input` pure-logic crate created with `BindingMatcher`, `KeyModifiers`, `KeySym`, `CompositorAction`, ADR-0014 through ADR-0019 recorded.
 
 ## In progress
-- (none — Phase 1 and post-phase-1 nested orientation fix complete and visually verified live with weston-terminal)
+- **Milestone 2B (Safety Net & Test Harness):**
+  - Step 2B.1: Wire `kx-input` binding matcher into nested and DRM event loops.
+  - Step 2B.2: Implement `sd_notify` (`READY=1`, `WATCHDOG=1`) in `kx-common`.
+  - Step 2B.3: Add `--exit-after <duration>` CLI timeout flag in `kynex-comp`.
+  - Step 2B.4: Frame clock pure-logic state machine (`Idle -> Queued -> WaitingForVBlank -> Idle`).
+  - Step 2B.5: Fault-injection test harness (feature-gated, park_timeout hang, scoped clippy panic, debug_assertions guard, strict spec parser).
+  - Step 2B.6: Draft systemd user service unit.
 
 ## Next
-1. Human review and merge of `feat/phase-1-nested-compositor` into `main`.
-2. Phase 2 — DRM/KMS Backend & Real Hardware:
-   - Scaffold `kx-backend` and separate backend traits (`Backend`, `OutputManager`).
-   - Integrate `libseat` (session management via logind/seatd without root privileges).
-   - DRM/KMS scanout, GBM allocation, mode setting, page flip events, hardware plane assignments (overlay/cursor planes).
-   - Libinput device discovery and event handling.
-   - Multi-monitor output topology and hotplug support.
-
-## Known issues
-- `cargo deny check` warns on duplicate `windows-sys` and `syn` versions pulled transitively by upstream dependencies, but passes advisory, ban, license, and source checks.
-
-## Open questions for the human
-- Target hardware and display configuration for Phase 2 DRM testing (virtual DRM device / virgl vs bare-metal GPU passthrough).
-- Desired default keybinding scheme for workspace navigation and window management in Phase 2.
+- Complete Milestone 2B, then STOP for manual test checklist.
+- Milestone 2C: DRM Device & Output Management (libseat session, udev primary GPU, DRM device, scanout modes).
+- Milestone 2D: Libinput & Input Pipeline (device discovery, pointer motion, keyboard dispatch via kx-input).
+- Milestone 2E: Rendering Loop & Damage Tracking (GBM buffers, EGL/GLES2 scanout, hardware cursor plane, page flip loop).
+- Milestone 2F: Polishing, Benchmarks & Phase Gate.
 
 ## Verify commands
 - `just check`
