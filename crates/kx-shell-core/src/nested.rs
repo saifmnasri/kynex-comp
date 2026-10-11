@@ -31,16 +31,6 @@ use crate::client::ClientState;
 use crate::error::ShellError;
 use crate::state::KynexState;
 
-/// Linux input event codes for emergency exit key combinations.
-const KEY_ESC: u32 = 1;
-const KEY_BACKSPACE: u32 = 14;
-const KEY_LEFTCTRL: u32 = 29;
-const KEY_RIGHTCTRL: u32 = 97;
-const KEY_LEFTSHIFT: u32 = 42;
-const KEY_RIGHTSHIFT: u32 = 54;
-const KEY_LEFTALT: u32 = 56;
-const KEY_RIGHTALT: u32 = 100;
-
 /// Default background color (#1a1a24 in sRGB floating-point).
 pub const DEFAULT_BG_COLOR: [f32; 4] = [
     26.0 / 255.0, // 0.101960785
@@ -84,7 +74,6 @@ struct NestedLoopState {
     running: bool,
     backend: WinitGraphicsBackend<GlesRenderer>,
     damage_tracker: OutputDamageTracker,
-    modifiers: kx_input::KeyModifiers,
     pointer_location: Point<f64, Logical>,
     frame_count: u64,
     max_frames: Option<u64>,
@@ -99,65 +88,51 @@ struct NestedLoopState {
 }
 
 impl NestedLoopState {
-    fn handle_keyboard_emergency_exit(
-        &mut self,
-        event: &impl KeyboardKeyEvent<WinitInput>,
-    ) -> bool {
-        let key = event.key_code().raw();
-        let is_pressed = event.state() == KeyState::Pressed;
-
-        match key {
-            KEY_LEFTCTRL | KEY_RIGHTCTRL => {
-                self.modifiers.set(kx_input::KeyModifiers::CTRL, is_pressed);
-            }
-            KEY_LEFTSHIFT | KEY_RIGHTSHIFT => {
-                self.modifiers
-                    .set(kx_input::KeyModifiers::SHIFT, is_pressed);
-            }
-            KEY_LEFTALT | KEY_RIGHTALT => {
-                self.modifiers.set(kx_input::KeyModifiers::ALT, is_pressed);
-            }
-            KEY_ESC if is_pressed => {
-                if let Some(kx_input::CompositorAction::Quit) = self
-                    .state
-                    .binding_matcher
-                    .matches(self.modifiers, kx_input::KeySym::ESCAPE)
-                {
-                    tracing::info!("Emergency exit key combination triggered (Ctrl+Shift+Escape)");
-                    return true;
-                }
-            }
-            KEY_BACKSPACE if is_pressed => {
-                if let Some(kx_input::CompositorAction::Quit) = self
-                    .state
-                    .binding_matcher
-                    .matches(self.modifiers, kx_input::KeySym::BACKSPACE)
-                {
-                    tracing::info!("Emergency exit key combination triggered (Ctrl+Alt+Backspace)");
-                    return true;
-                }
-            }
-            _ => {}
-        }
-        false
-    }
-
     fn handle_keyboard_event(&mut self, event: &impl KeyboardKeyEvent<WinitInput>) {
-        if self.handle_keyboard_emergency_exit(event) {
-            self.running = false;
-            return;
-        }
-
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.state.seat.get_keyboard() {
-            keyboard.input::<(), _>(
+            let action = keyboard.input(
                 &mut self.state,
                 event.key_code(),
                 event.state(),
                 serial,
                 event.time_msec(),
-                |_data, _modifiers, _keysym| FilterResult::Forward,
+                |state, modifiers, keysym_handle| {
+                    if event.state() == KeyState::Pressed {
+                        let mut key_mods = kx_input::KeyModifiers::empty();
+                        if modifiers.ctrl {
+                            key_mods |= kx_input::KeyModifiers::CTRL;
+                        }
+                        if modifiers.shift {
+                            key_mods |= kx_input::KeyModifiers::SHIFT;
+                        }
+                        if modifiers.alt {
+                            key_mods |= kx_input::KeyModifiers::ALT;
+                        }
+                        if modifiers.logo {
+                            key_mods |= kx_input::KeyModifiers::LOGO;
+                        }
+
+                        let sym = kx_input::KeySym(keysym_handle.modified_sym().raw());
+                        if let Some(action) = state.binding_matcher.matches(key_mods, sym) {
+                            return FilterResult::Intercept(action.clone());
+                        }
+
+                        for raw_sym in keysym_handle.raw_syms() {
+                            let sym = kx_input::KeySym(raw_sym.raw());
+                            if let Some(action) = state.binding_matcher.matches(key_mods, sym) {
+                                return FilterResult::Intercept(action.clone());
+                            }
+                        }
+                    }
+                    FilterResult::Forward
+                },
             );
+
+            if let Some(kx_input::CompositorAction::Quit) = action {
+                tracing::info!("Emergency exit key combination triggered; shutting down");
+                self.running = false;
+            }
         }
     }
 
@@ -518,7 +493,6 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
         running: true,
         backend,
         damage_tracker,
-        modifiers: kx_input::KeyModifiers::empty(),
         pointer_location: Point::from((0.0, 0.0)),
         frame_count: 0,
         max_frames: options.max_frames,

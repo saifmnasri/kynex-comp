@@ -109,6 +109,18 @@ impl BindingMatcher {
             CompositorAction::Quit,
         ));
 
+        // Emergency exit 3: Ctrl + Shift + Q (failsafe for keyboard matrix ghosting)
+        matcher.add_binding(KeyBinding::new(
+            KeyModifiers::CTRL | KeyModifiers::SHIFT,
+            KeySym::Q,
+            CompositorAction::Quit,
+        ));
+        matcher.add_binding(KeyBinding::new(
+            KeyModifiers::CTRL | KeyModifiers::SHIFT,
+            KeySym::Q_UPPER,
+            CompositorAction::Quit,
+        ));
+
         matcher
     }
 
