@@ -30,12 +30,17 @@
     - Step 2B.5: Feature-gated `fault-injection` test harness (`park_timeout` hang loop, single scoped panic suppression, release `compile_error!`, simulated GPU loss `SwapBuffersError::ContextLost`, strict token parser, `+fault-injection` in `--version`).
     - Step 2B.6: Draft systemd user unit in `docs/kynex-comp.service`.
 
+  - **Milestone 2C (Read-Only DRM Device & Session Enumeration):**
+    - Step 2C.1: `DrmSession` safe wrapper over `LibSeatSession` in `kx-shell-core::drm::session` (`open`, `seat`, `is_active`, `open_device`, `close_device`, `change_vt`).
+    - Step 2C.2: Udev and DRM KMS resource discovery in `kx-shell-core::drm::device` querying primary/all GPUs, CRTCs, planes, connectors, and video modes.
+    - Step 2C.3: `DrmDiagnosticReport` with structured `log_report()` detailing hardware capabilities without activating modesetting.
+    - Step 2C.4: `--backend drm` and `--diagnostic` CLI flags wired with 10s safety timeout default for non-diagnostic runs.
+    - Verification: `just check` green (fmt, clippy `-D warnings`, 50 unit tests, cargo-deny).
+
 ## In progress
-- Milestone 2B user drill: verify `Ctrl+Shift+Q` in nested compositor.
+- Milestone 2C manual diagnostic drill on TTY3.
 
 ## Next
-- STOP: Present Milestone 2B verification checklist to user.
-- Milestone 2C: Read-Only DRM Device & Session Enumeration (libseat session, udev primary GPU, DRM node open, read-only connector/mode inspection).
 - Milestone 2D: Libinput & Input Pipeline (device discovery, pointer motion, keyboard dispatch via kx-input).
 - Milestone 2E: Rendering Loop & Damage Tracking (GBM buffers, EGL/GLES2 scanout, hardware cursor plane, page flip loop).
 - Milestone 2F: Polishing, Benchmarks & Phase Gate.
@@ -44,4 +49,5 @@
 - `just check`
 - `cargo test --workspace --features fault-injection --locked`
 - `cargo check --release` (verifies release build succeeds without fault-injection)
+- `cargo run -p kynex-comp -- --backend drm --diagnostic` (Run manually from TTY3 only)
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`

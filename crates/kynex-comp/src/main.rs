@@ -23,6 +23,8 @@ pub struct CliArgs {
     pub max_frames: Option<u64>,
     /// Optional timeout before clean exit (useful for automated testing).
     pub exit_after: Option<Duration>,
+    /// When true, only query and output hardware diagnostics, then exit immediately.
+    pub diagnostic: bool,
 }
 
 fn print_help() {
@@ -33,6 +35,9 @@ fn print_help() {
     tracing::info!("  --max-frames <count>            Limit rendered frames before exit");
     tracing::info!(
         "  --exit-after <duration>         Exit cleanly after specified duration (e.g. 5s, 500ms)"
+    );
+    tracing::info!(
+        "  --diagnostic                    Inspect DRM devices and KMS resources, then exit"
     );
     tracing::info!("  --help                          Display this help message");
     tracing::info!("  --version                       Display version information");
@@ -84,6 +89,7 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
     let mut config_path = None;
     let mut max_frames = None;
     let mut exit_after = None;
+    let mut diagnostic = false;
     let mut idx = 1;
 
     while idx < args.len() {
@@ -136,6 +142,9 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
                 let dur = parse_duration(val)?;
                 exit_after = Some(dur);
             }
+            "--diagnostic" => {
+                diagnostic = true;
+            }
             other => {
                 return Err(format!("unknown argument: {other}"));
             }
@@ -148,6 +157,7 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
         config_path,
         max_frames,
         exit_after,
+        diagnostic,
     }))
 }
 
@@ -187,19 +197,30 @@ fn run() -> anyhow::Result<()> {
 
     tracing::info!(backend = %parsed.backend, "Starting KynexComp");
 
-    if parsed.backend != "winit" && parsed.backend != "nested" {
+    if parsed.backend == "winit" || parsed.backend == "nested" {
+        let options = kx_shell_core::NestedOptions {
+            config: kx_shell_core::NestedConfig::default(),
+            max_frames: parsed.max_frames,
+            exit_after: parsed.exit_after,
+        };
+        kx_shell_core::run_nested(&options)?;
+    } else if parsed.backend == "drm" {
+        let exit_after = if parsed.diagnostic {
+            parsed.exit_after
+        } else {
+            parsed.exit_after.or(Some(Duration::from_secs(10)))
+        };
+        let options = kx_shell_core::DrmOptions {
+            exit_after,
+            diagnostic_only: parsed.diagnostic,
+        };
+        kx_shell_core::run_drm(&options)?;
+    } else {
         anyhow::bail!(
-            "Only the 'winit' nested backend is supported in Phase 1 (requested: {})",
+            "Unsupported backend '{}' (supported: 'winit', 'nested', 'drm')",
             parsed.backend
         );
     }
-
-    let options = kx_shell_core::NestedOptions {
-        config: kx_shell_core::NestedConfig::default(),
-        max_frames: parsed.max_frames,
-        exit_after: parsed.exit_after,
-    };
-    kx_shell_core::run_nested(&options)?;
 
     Ok(())
 }
@@ -328,5 +349,35 @@ mod tests {
             cmd.get_envs()
                 .any(|(k, v)| k == "KYNEX_FAULT" && v.is_none())
         );
+    }
+
+    #[test]
+    fn test_diagnostic_flag() {
+        let args = vec![String::from("kynex-comp"), String::from("--diagnostic")];
+        let parsed = parse_args(&args).unwrap().unwrap();
+        assert_eq!(parsed.backend, "winit");
+        assert!(parsed.diagnostic);
+
+        let args_drm = vec![
+            String::from("kynex-comp"),
+            String::from("--backend"),
+            String::from("drm"),
+            String::from("--diagnostic"),
+        ];
+        let parsed_drm = parse_args(&args_drm).unwrap().unwrap();
+        assert_eq!(parsed_drm.backend, "drm");
+        assert!(parsed_drm.diagnostic);
+    }
+
+    #[test]
+    fn test_drm_backend_flag() {
+        let args = vec![
+            String::from("kynex-comp"),
+            String::from("--backend"),
+            String::from("drm"),
+        ];
+        let parsed = parse_args(&args).unwrap().unwrap();
+        assert_eq!(parsed.backend, "drm");
+        assert!(!parsed.diagnostic);
     }
 }

@@ -7,6 +7,7 @@
 //! rendering loop, and protocol dispatch.
 
 pub mod client;
+pub mod drm;
 pub mod error;
 pub mod frame_clock;
 pub mod nested;
@@ -16,6 +17,9 @@ pub mod state;
 pub mod fault;
 
 pub use client::{ClientLimits, ClientState};
+pub use drm::{
+    ConnectorInfo, DrmDeviceInfo, DrmDiagnosticReport, DrmOptions, DrmSession, ModeInfo, run_drm,
+};
 pub use error::ShellError;
 #[cfg(feature = "fault-injection")]
 pub use fault::{FaultController, FaultError, FaultSpec, MAX_HANG_SECS, MAX_TRIGGER_FRAME};

@@ -49,6 +49,18 @@ pub enum ShellError {
     #[error("keyboard initialization error: {0}")]
     Keyboard(#[from] smithay::input::keyboard::Error),
 
+    /// Session management error.
+    #[error("session error: {0}")]
+    Session(String),
+
+    /// Udev device discovery error.
+    #[error("udev error: {0}")]
+    Udev(String),
+
+    /// DRM device or modesetting error.
+    #[error("DRM error: {0}")]
+    Drm(String),
+
     /// Underlying I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
@@ -57,6 +69,18 @@ pub enum ShellError {
 impl From<smithay::backend::winit::Error> for ShellError {
     fn from(err: smithay::backend::winit::Error) -> Self {
         Self::WinitInit(err.to_string())
+    }
+}
+
+impl From<smithay::backend::session::libseat::Error> for ShellError {
+    fn from(err: smithay::backend::session::libseat::Error) -> Self {
+        Self::Session(err.to_string())
+    }
+}
+
+impl From<smithay::backend::drm::DrmError> for ShellError {
+    fn from(err: smithay::backend::drm::DrmError) -> Self {
+        Self::Drm(err.to_string())
     }
 }
 
