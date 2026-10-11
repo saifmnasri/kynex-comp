@@ -42,4 +42,12 @@ Format: `ADR-NNNN — title — status — context — decision — consequences
 **Context:** During panic handling, the process state is partially degraded; allocating complex serde JSON structures in leaf `kx-common` could fail or pull in heavy dependencies.
 **Decision:** Write crash reports in a structured plain text key-value format (`KynexComp Crash Report`, `version`, `pid`, `timestamp`, `location`, `message`, `Backtrace`) using standard `write!` / `writeln!`.
 **Consequences:** Keeps `kx-common` free of JSON dependencies, robust during stack unwinding, and easily readable by automated tools or developers.
+## ADR-0011 — Pin Smithay 0.7.0 from crates.io — Accepted
+**Context:** Phase 1 requires a pinned, stable, permissive-license Wayland compositor framework compatible with `deny.toml` policies.
+**Decision:** Pin `smithay = "0.7.0"` from crates.io with features `backend_winit`, `wayland_frontend`, `desktop`, `renderer_gl`. Do not use a git pin (forbidden by `deny.toml` `unknown-git = "deny"` and Rule 01).
+**Consequences:** Full license compliance (MIT), reproducible builds, supported on Rust 2024 / MSRV 1.80.1. Upgrade path is explicit and gated by `just check`.
 
+## ADR-0012 — Phase 1 crate scope (kynex-comp, kx-shell-core, kx-test-utils) — Accepted
+**Context:** Rule 02 forbids speculative abstractions and empty scaffolding crates before their real requirements exist.
+**Decision:** For Phase 1 (nested compositor), implement `kynex-comp` (binary and CLI), `kx-shell-core` (compositor state, backend integration, rendering loop, protocols), and `kx-test-utils` (test client harness). Crate decomposition into `kx-backend`, `kx-render`, and `kx-protocols` is deferred to Phase 2 when the DRM/KMS backend is introduced.
+**Consequences:** Keeps the codebase cohesive and under active testing without premature layer fragmentation, while enforcing clean internal module separation.
