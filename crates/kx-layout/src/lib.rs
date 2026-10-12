@@ -8,8 +8,13 @@
 //! focus stacking, and reachability validation live here for deterministic unit and property testing.
 
 pub mod window;
+pub mod workspace;
 
 pub use window::{
     MAX_STRING_BYTES, OutputId, SizeConstraints, WindowData, WindowGeometry, WindowId, WindowState,
     truncate_utf8,
+};
+pub use workspace::{
+    DEFAULT_WORKSPACE_COUNT, MAX_WINDOWS_PER_WORKSPACE, MAX_WORKSPACES, Workspace, WorkspaceError,
+    WorkspaceId, WorkspaceManager,
 };
