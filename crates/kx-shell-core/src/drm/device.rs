@@ -3,15 +3,14 @@
 
 //! Read-only DRM device, connector, CRTC, and plane inspection and reporting.
 
+use std::os::unix::io::{AsFd, BorrowedFd, OwnedFd};
 use std::path::{Path, PathBuf};
 
-use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::udev::{all_gpus, primary_gpu};
 use smithay::reexports::drm::control::{
     Device as ControlDevice, ModeTypeFlags, RawResourceHandle, connector,
 };
 use smithay::reexports::rustix::fs::OFlags;
-use smithay::utils::DeviceFd;
 use tracing::{info, warn};
 
 use super::session::DrmSession;
@@ -173,26 +172,52 @@ pub fn inspect_drm(session: &mut DrmSession) -> Result<DrmDiagnosticReport, Shel
     })
 }
 
+struct InspectDrmFd<'a>(&'a OwnedFd);
+
+impl AsFd for InspectDrmFd<'_> {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.0.as_fd()
+    }
+}
+
+impl smithay::reexports::drm::Device for InspectDrmFd<'_> {}
+impl ControlDevice for InspectDrmFd<'_> {}
+
 fn inspect_single_device(
     session: &mut DrmSession,
     path: &Path,
     is_primary: bool,
 ) -> Result<DrmDeviceInfo, ShellError> {
     let fd = session.open_device(path, OFlags::RDWR | OFlags::CLOEXEC)?;
-    let dev_fd = DeviceFd::from(fd);
-    let drm_fd = DrmDeviceFd::new(dev_fd);
+    let inspect_dev = InspectDrmFd(&fd);
 
-    let res = drm_fd
+    let res = inspect_dev
         .resource_handles()
-        .map_err(|e| ShellError::Drm(format!("failed to query DRM resource handles: {e}")))?;
+        .map_err(|e| ShellError::Drm(format!("failed to query DRM resource handles: {e}")));
 
-    let planes = drm_fd
+    let planes = inspect_dev
         .plane_handles()
-        .map_err(|e| ShellError::Drm(format!("failed to query DRM plane handles: {e}")))?;
+        .map_err(|e| ShellError::Drm(format!("failed to query DRM plane handles: {e}")));
+
+    let connectors = match &res {
+        Ok(r) => inspect_connectors(&inspect_dev, r.connectors()),
+        Err(_) => Vec::new(),
+    };
+
+    // Always release the device from the session before returning or propagating errors.
+    if let Err(close_err) = session.close_device(fd) {
+        warn!(
+            path = %path.display(),
+            error = %close_err,
+            "Failed to close inspected DRM device via session"
+        );
+    }
+
+    let res = res?;
+    let planes = planes?;
 
     let crtc_count = res.crtcs().len();
     let plane_count = planes.len();
-    let connectors = inspect_connectors(&drm_fd, res.connectors());
 
     Ok(DrmDeviceInfo {
         path: path.to_path_buf(),
@@ -203,7 +228,10 @@ fn inspect_single_device(
     })
 }
 
-fn inspect_connectors(drm_fd: &DrmDeviceFd, handles: &[connector::Handle]) -> Vec<ConnectorInfo> {
+fn inspect_connectors(
+    drm_fd: &impl ControlDevice,
+    handles: &[connector::Handle],
+) -> Vec<ConnectorInfo> {
     let mut connectors = Vec::with_capacity(handles.len());
 
     for handle in handles {
