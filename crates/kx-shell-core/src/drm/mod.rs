@@ -67,6 +67,30 @@ struct DrmLoopState {
 }
 
 impl DrmLoopState {
+    fn new(
+        gpu: DrmGpuResources,
+        pipeline: DrmOutputPipeline,
+        state: KynexState,
+        display: Display<KynexState>,
+        options: &DrmOptions,
+    ) -> Self {
+        let [r, g, b, a] = crate::nested::DEFAULT_BG_COLOR;
+        Self {
+            running: true,
+            gpu,
+            pipeline,
+            frame_count: 0,
+            max_frames: options.max_frames,
+            exit_after: options.exit_after,
+            start_time: Instant::now(),
+            bg_color: Color32F::new(r, g, b, a),
+            last_error: None,
+            pointer_location: Point::from((0.0, 0.0)),
+            state,
+            display,
+        }
+    }
+
     fn render_clear_frame(&mut self) -> Result<(), ShellError> {
         self.pipeline
             .render_all_clear_frames(&mut self.gpu, self.bg_color)
@@ -312,6 +336,47 @@ fn run_event_loop(
     Ok(())
 }
 
+fn init_subsystems(
+    session: &mut DrmSession,
+    primary_card: &std::path::Path,
+) -> Result<
+    (
+        DrmGpuResources,
+        Option<DrmDeviceNotifier>,
+        DrmOutputPipeline,
+        UdevBackend,
+        LibinputInputBackend,
+    ),
+    ShellError,
+> {
+    let mut gpu = DrmGpuResources::init(session, primary_card)?;
+    let drm_notifier = gpu.drm_notifier.take();
+    let pipeline = DrmOutputPipeline::init(&mut gpu)?;
+    let udev = UdevBackend::new(session.seat())?;
+    let libinput = input::init_libinput(session.libseat_session(), &session.seat())?;
+    Ok((gpu, drm_notifier, pipeline, udev, libinput))
+}
+
+fn setup_drm_session(
+    options: &DrmOptions,
+) -> Result<Option<(DrmSession, LibSeatSessionNotifier, std::path::PathBuf)>, ShellError> {
+    let (mut session, session_notifier) = DrmSession::open()?;
+    let report = device::inspect_drm(&mut session)?;
+    report.log_report();
+
+    if options.diagnostic_only {
+        info!("Diagnostic scan complete, exiting as requested by --diagnostic");
+        return Ok(None);
+    }
+
+    let primary_card = report
+        .primary_gpu
+        .or_else(|| report.devices.first().map(|d| d.path.clone()))
+        .ok_or_else(|| ShellError::Drm("no DRM GPU device found on seat".to_string()))?;
+
+    Ok(Some((session, session_notifier, primary_card)))
+}
+
 /// Entry point to initialize and run the DRM backend.
 ///
 /// # Errors
@@ -320,26 +385,12 @@ fn run_event_loop(
 pub fn run_drm(options: &DrmOptions) -> Result<(), ShellError> {
     info!("Initializing DRM backend...");
 
-    let (mut session, session_notifier) = DrmSession::open()?;
-
-    let report = device::inspect_drm(&mut session)?;
-    report.log_report();
-
-    if options.diagnostic_only {
-        info!("Diagnostic scan complete, exiting as requested by --diagnostic");
+    let Some((mut session, session_notifier, primary_card)) = setup_drm_session(options)? else {
         return Ok(());
-    }
+    };
 
-    let primary_card = report
-        .primary_gpu
-        .or_else(|| report.devices.first().map(|d| d.path.clone()))
-        .ok_or_else(|| ShellError::Drm("no DRM GPU device found on seat".to_string()))?;
-
-    let mut gpu = DrmGpuResources::init(&mut session, &primary_card)?;
-    let drm_notifier = gpu.drm_notifier.take();
-    let pipeline = DrmOutputPipeline::init(&mut gpu)?;
-    let udev = UdevBackend::new(session.seat())?;
-    let libinput = input::init_libinput(session.libseat_session(), &session.seat())?;
+    let (gpu, drm_notifier, pipeline, udev, libinput) =
+        init_subsystems(&mut session, &primary_card)?;
 
     let primary_output = pipeline
         .primary_output()
@@ -357,11 +408,7 @@ pub fn run_drm(options: &DrmOptions) -> Result<(), ShellError> {
         }
     }
 
-    let [r, g, b, a] = crate::nested::DEFAULT_BG_COLOR;
-    let bg_color = Color32F::new(r, g, b, a);
-
     let mut event_loop: EventLoop<'_, DrmLoopState> = EventLoop::try_new()?;
-
     if let Some(duration) = options.exit_after {
         register_exit_timer(&event_loop.handle(), duration)?;
     }
@@ -376,21 +423,7 @@ pub fn run_drm(options: &DrmOptions) -> Result<(), ShellError> {
     };
     register_event_sources(&event_loop.handle(), sources)?;
 
-    let mut loop_state = DrmLoopState {
-        running: true,
-        gpu,
-        pipeline,
-        frame_count: 0,
-        max_frames: options.max_frames,
-        exit_after: options.exit_after,
-        start_time: Instant::now(),
-        bg_color,
-        last_error: None,
-        pointer_location: Point::from((0.0, 0.0)),
-        state,
-        display,
-    };
-
+    let mut loop_state = DrmLoopState::new(gpu, pipeline, state, display, options);
     loop_state.render_clear_frame()?;
 
     if let Err(err) = kx_common::sd_notify(kx_common::notify_state::READY) {
