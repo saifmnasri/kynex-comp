@@ -44,9 +44,10 @@
     - Verification: `just check` green (fmt, clippy `-D warnings`, 50 unit tests, cargo-deny).
 
 ## In progress
-- Milestone 2D live hardware test drill on TTY3 (`Ctrl+Option+F3`).
+- Milestone 2D live hardware test drill on TTY3 (`Ctrl+Option+F3` or `Fn+Ctrl+Option+F3`).
   - Fixed logind `EINVAL` (`os error 22`) on `/dev/dri/card0` during `DrmGpuResources::init` by properly calling `session.close_device` after read-only inspection in `device::inspect_drm`.
-  - Ready for verification run on TTY3.
+  - Fixed `DRM queue_frame error: EmptyFrame` by detecting empty render frames (`render_result.is_empty`) and skipping `queue_frame` while notifying `FrameClock::on_render_skipped()`, and setting the Tokyo Night clear color directly on `DrmOutputRenderElements` during `initialize_output` modeset commit.
+  - Ready for user verification run on TTY3.
 
 ## Next
 - Milestone 2E: Multi-output support, hardware cursor planes, and dynamic monitor hotplug handling.
