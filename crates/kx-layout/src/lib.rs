@@ -7,11 +7,9 @@
 //! or GPU/rendering crates (per Rule 02). All policy decisions, layout computations,
 //! focus stacking, and reachability validation live here for deterministic unit and property testing.
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_layout_crate_scaffold() {
-        let one: u32 = 1;
-        assert_eq!(one, 1);
-    }
-}
+pub mod window;
+
+pub use window::{
+    MAX_STRING_BYTES, OutputId, SizeConstraints, WindowData, WindowGeometry, WindowId, WindowState,
+    truncate_utf8,
+};
