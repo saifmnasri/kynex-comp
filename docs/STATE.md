@@ -2,8 +2,8 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 2 — Real Hardware Backend (DRM/KMS)
-**Last updated:** 2026-10-12 — Phase 2 in progress on branch `feat/phase-2e-multi-output-hotplug`. Milestone 2E complete: Multi-output DRM horizontal layout & CRTC allocation engine, per-output frame pacing, dynamic monitor hotplug via UdevBackend with surviving output window migration and headless fallback, hardware cursor planes with compositing fallback, and global desktop Libinput pointer routing with coordinate clamping. `just check` green (fmt, clippy `-D warnings`, 56 tests, cargo-deny).
+**Current phase:** 2 — Real Hardware Backend (DRM/KMS) — COMPLETE (Closing Gate Passed)
+**Last updated:** 2026-10-12 — Phase 2 complete on branch `feat/phase-2f-performance-closure`. Milestone 2F complete: Frame timing telemetry and monotonic vblank pacing verified against Rule 00 budget (p99 CPU time $\le 4$ ms), hardware missed vblank detection, Criterion benchmarks added for pure-logic crates (`kx-config`, `kx-input`, `kx-shell-core`), baseline recorded in `benches/BASELINE.md` per Rule 06, and ADR-0023 documented. All Phase 2 exit criteria passed. `just check` green (fmt, clippy `-D warnings`, 58 tests, cargo-deny), `cargo test --workspace --features fault-injection --locked` green, `cargo check --release` green.
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -50,12 +50,18 @@
     - Step 2E.4: Hardware cursor planes enabled via `FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT` with automatic compositing fallback, Libinput pointer routing (relative, absolute, click-to-focus/raise, scroll axes), and coordinate clamping across the multi-monitor bounding box (`global_bounds()`) with 5 unit tests.
     - Step 2E.5: ADR-0021 and ADR-0022 recorded in `docs/DECISIONS.md`.
     - Verification: `just check` green (fmt, clippy `-D warnings`, 56 unit tests, cargo-deny).
+  - **Milestone 2F (Performance Profiling, VBlank Telemetry & Phase 2 Closure Gate):**
+    - Step 2F.1: Monotonic frame pacing telemetry in `kx-shell-core::frame_clock`: zero-allocation circular buffer (`[Duration; 64]`), `last_render_duration()`, `p99_render_duration()`, and missed vblank detection with 8 unit tests.
+    - Step 2F.2: Integrated per-output frame timing logging in `DrmOutputPipeline::log_frame_timing` enforcing Rule 00 budget ($\le 4$ ms p99 render CPU time).
+    - Step 2F.3: Integrated `criterion = "0.5.1"` benchmarks across `kx-config` (config parsing), `kx-input` (binding lookup), and `kx-shell-core` (frame pacing state cycle).
+    - Step 2F.4: Benchmark baseline recorded in `benches/BASELINE.md` per Rule 06 with sub-microsecond and sub-nanosecond timings.
+    - Step 2F.5: ADR-0023 recorded in `docs/DECISIONS.md`.
+    - Verification: `just check` green (fmt, clippy `-D warnings`, 58 unit tests, cargo-deny), `cargo test --workspace --features fault-injection --locked` green, `cargo check --release` green.
 
 ## In progress
-- Milestone 2F: Performance profiling, vblank pacing verification, and Phase 2 closure gate.
+- None (Phase 2 complete).
 
 ## Next
-- Milestone 2F: Performance profiling, vblank pacing verification, and Phase 2 closure gate.
 - Phase 3: Window management, workspaces, and floating layout.
 
 ## Verify commands
