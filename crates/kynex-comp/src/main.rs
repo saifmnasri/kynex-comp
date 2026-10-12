@@ -212,6 +212,7 @@ fn run() -> anyhow::Result<()> {
         };
         let options = kx_shell_core::DrmOptions {
             exit_after,
+            max_frames: parsed.max_frames,
             diagnostic_only: parsed.diagnostic,
         };
         kx_shell_core::run_drm(&options)?;

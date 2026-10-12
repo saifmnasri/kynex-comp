@@ -50,6 +50,12 @@ impl DrmSession {
         self.session.is_active()
     }
 
+    /// Retrieve a clone of the underlying `LibSeatSession` handle.
+    #[must_use]
+    pub fn libseat_session(&self) -> LibSeatSession {
+        self.session.clone()
+    }
+
     /// Open a device node managed by the session.
     ///
     /// # Errors

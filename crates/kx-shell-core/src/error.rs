@@ -57,9 +57,25 @@ pub enum ShellError {
     #[error("udev error: {0}")]
     Udev(String),
 
+    /// Libinput or input processing error.
+    #[error("input error: {0}")]
+    Input(String),
+
     /// DRM device or modesetting error.
     #[error("DRM error: {0}")]
     Drm(String),
+
+    /// EGL context or display error.
+    #[error("EGL error: {0}")]
+    Egl(String),
+
+    /// OpenGL ES renderer error.
+    #[error("GLES error: {0}")]
+    Gles(String),
+
+    /// DRM output initialization or modesetting error.
+    #[error("output error: {0}")]
+    Output(String),
 
     /// Underlying I/O error.
     #[error("I/O error: {0}")]
@@ -81,6 +97,18 @@ impl From<smithay::backend::session::libseat::Error> for ShellError {
 impl From<smithay::backend::drm::DrmError> for ShellError {
     fn from(err: smithay::backend::drm::DrmError) -> Self {
         Self::Drm(err.to_string())
+    }
+}
+
+impl From<smithay::backend::egl::Error> for ShellError {
+    fn from(err: smithay::backend::egl::Error) -> Self {
+        Self::Egl(err.to_string())
+    }
+}
+
+impl From<smithay::backend::renderer::gles::GlesError> for ShellError {
+    fn from(err: smithay::backend::renderer::gles::GlesError) -> Self {
+        Self::Gles(err.to_string())
     }
 }
 

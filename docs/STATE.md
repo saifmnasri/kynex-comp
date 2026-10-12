@@ -3,7 +3,7 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 2 — Real Hardware Backend (DRM/KMS)
-**Last updated:** 2026-10-11 — Phase 2 in progress on branch `feat/phase-2-drm-backend`. Milestone 2A & 2B complete: safety nets, sd_notify, frame clock, exit-after timeout, fault-injection harness, and systemd service unit implemented and verified. `just check` green (fmt, clippy, 48 tests, cargo-deny).
+**Last updated:** 2026-10-12 — Phase 2 in progress on branch `feat/phase-2-drm-backend`. Milestone 2D complete: DRM modesetting, GBM buffer allocation, EGL display/context & GLES renderer initialization, solid clear color render loop, calloop event loop wiring, Libinput input integration with emergency exit keys, and sd_notify readiness/stopping signals. `just check` green (fmt, clippy `-D warnings`, 50 tests, cargo-deny).
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -29,25 +29,31 @@
     - Step 2B.4: Pure-logic `FrameClock` state machine (`Idle -> Queued -> WaitingForVBlank -> Idle`) with frame coalescing and moving-max render estimation in `kx-shell-core::frame_clock`.
     - Step 2B.5: Feature-gated `fault-injection` test harness (`park_timeout` hang loop, single scoped panic suppression, release `compile_error!`, simulated GPU loss `SwapBuffersError::ContextLost`, strict token parser, `+fault-injection` in `--version`).
     - Step 2B.6: Draft systemd user unit in `docs/kynex-comp.service`.
-
   - **Milestone 2C (Read-Only DRM Device & Session Enumeration):**
     - Step 2C.1: `DrmSession` safe wrapper over `LibSeatSession` in `kx-shell-core::drm::session` (`open`, `seat`, `is_active`, `open_device`, `close_device`, `change_vt`).
     - Step 2C.2: Udev and DRM KMS resource discovery in `kx-shell-core::drm::device` querying primary/all GPUs, CRTCs, planes, connectors, and video modes.
     - Step 2C.3: `DrmDiagnosticReport` with structured `log_report()` detailing hardware capabilities without activating modesetting.
     - Step 2C.4: `--backend drm` and `--diagnostic` CLI flags wired with 10s safety timeout default for non-diagnostic runs.
+  - **Milestone 2D (DRM Modesetting, GBM/EGL Pipeline & Clear Color Render Loop):**
+    - Step 2D.1: Isolated unsafe EGL driver initialization in `kx-shell-core::drm::egl` with crate-level `unsafe_code = "deny"` override and module-level `#![expect(unsafe_code)]`.
+    - Step 2D.2: GPU resource bundle in `kx-shell-core::drm::gpu` with `DrmGpuResources` initializing `DrmDevice`, `GbmDevice`, `GbmAllocator`, `GbmFramebufferExporter`, and `GlesRenderer`.
+    - Step 2D.3: Hardware modesetting pipeline in `kx-shell-core::drm::output` with `DrmOutputPipeline` detecting primary connected connector, preferred video mode, CRTC, and configuring `DrmOutputManager`.
+    - Step 2D.4: Libinput backend in `kx-shell-core::drm::input` with `LibinputInputBackend` and `process_keyboard_event` dispatching emergency exit shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
+    - Step 2D.5: Main DRM execution loop in `kx-shell-core::drm::mod` with Calloop sources for Libinput, DRM page flips, Libseat VT pause/activate, SIGINT/SIGTERM, Wayland listening socket, client event loops, and frame pacing rendering `DEFAULT_BG_COLOR` clear color.
+    - Step 2D.6: Systemd `sd_notify` readiness signal dispatched upon first successful page flip submission, and stopping notification on shutdown.
     - Verification: `just check` green (fmt, clippy `-D warnings`, 50 unit tests, cargo-deny).
 
 ## In progress
-- Milestone 2C manual diagnostic drill on TTY3.
+- Milestone 2D live hardware test drill on TTY3 (`Ctrl+Option+F3`).
 
 ## Next
-- Milestone 2D: Libinput & Input Pipeline (device discovery, pointer motion, keyboard dispatch via kx-input).
-- Milestone 2E: Rendering Loop & Damage Tracking (GBM buffers, EGL/GLES2 scanout, hardware cursor plane, page flip loop).
-- Milestone 2F: Polishing, Benchmarks & Phase Gate.
+- Milestone 2E: Multi-output support, hardware cursor planes, and dynamic monitor hotplug handling.
+- Milestone 2F: Performance profiling, vblank pacing verification, and Phase 2 closure gate.
 
 ## Verify commands
 - `just check`
 - `cargo test --workspace --features fault-injection --locked`
-- `cargo check --release` (verifies release build succeeds without fault-injection)
+- `cargo check --release`
 - `cargo run -p kynex-comp -- --backend drm --diagnostic` (Run manually from TTY3 only)
+- `cargo run -p kynex-comp -- --backend drm --exit-after 5s` (Run manually from TTY3 only)
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`
