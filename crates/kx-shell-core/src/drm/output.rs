@@ -257,7 +257,7 @@ impl DrmOutputPipeline {
     }
 }
 
-fn initialize_output_entry(
+pub(crate) fn initialize_output_entry(
     manager: &mut PipelineDrmOutputManager,
     renderer: &mut GlesRenderer,
     assignment: &crate::drm::layout::OutputAssignment<connector::Handle, crtc::Handle>,
@@ -321,7 +321,9 @@ fn initialize_output_entry(
     })
 }
 
-fn scan_connected_connectors(drm_fd: &DrmDeviceFd) -> Result<Vec<ScannedConnector>, ShellError> {
+pub(crate) fn scan_connected_connectors(
+    drm_fd: &DrmDeviceFd,
+) -> Result<Vec<ScannedConnector>, ShellError> {
     let res = drm_fd
         .resource_handles()
         .map_err(|e| ShellError::Drm(format!("failed to query DRM resource handles: {e}")))?;

@@ -6,6 +6,7 @@
 pub mod device;
 pub mod egl;
 pub mod gpu;
+pub mod hotplug;
 pub mod input;
 pub mod layout;
 pub mod output;
@@ -22,6 +23,7 @@ use smithay::backend::drm::{DrmDeviceNotifier, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::renderer::Color32F;
 use smithay::backend::session::libseat::LibSeatSessionNotifier;
+use smithay::backend::udev::{UdevBackend, UdevEvent};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::Display;
 use smithay::wayland::socket::ListeningSocketSource;
@@ -72,6 +74,7 @@ impl DrmLoopState {
 struct DrmEventSources {
     session_notifier: LibSeatSessionNotifier,
     drm_notifier: Option<DrmDeviceNotifier>,
+    udev: UdevBackend,
     libinput: LibinputInputBackend,
     listening_socket: ListeningSocketSource,
     poll_fd: OwnedFd,
@@ -111,9 +114,37 @@ fn register_event_sources(
         })
         .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
 
+    loop_handle
+        .insert_source(sources.udev, |event, (), loop_state| {
+            handle_udev_event(event, loop_state);
+        })
+        .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
+
     register_wayland_sources(loop_handle, sources.listening_socket, sources.poll_fd)?;
 
     Ok(())
+}
+
+fn handle_udev_event(event: UdevEvent, loop_state: &mut DrmLoopState) {
+    match event {
+        UdevEvent::Changed { device_id } => {
+            tracing::info!(?device_id, "Udev device change event detected");
+            let dh = loop_state.display.handle();
+            if let Err(err) =
+                loop_state
+                    .pipeline
+                    .handle_hotplug(&mut loop_state.gpu, &mut loop_state.state, &dh)
+            {
+                tracing::error!(%err, "Failed to handle DRM monitor hotplug");
+            }
+        }
+        UdevEvent::Added { device_id, path } => {
+            tracing::debug!(?device_id, ?path, "Udev device added");
+        }
+        UdevEvent::Removed { device_id } => {
+            tracing::debug!(?device_id, "Udev device removed");
+        }
+    }
 }
 
 fn handle_session_event(event: smithay::backend::session::Event, loop_state: &mut DrmLoopState) {
@@ -299,6 +330,7 @@ pub fn run_drm(options: &DrmOptions) -> Result<(), ShellError> {
     let mut gpu = DrmGpuResources::init(&mut session, &primary_card)?;
     let drm_notifier = gpu.drm_notifier.take();
     let pipeline = DrmOutputPipeline::init(&mut gpu)?;
+    let udev = UdevBackend::new(session.seat())?;
     let libinput = input::init_libinput(session.libseat_session(), &session.seat())?;
 
     let primary_output = pipeline
@@ -329,6 +361,7 @@ pub fn run_drm(options: &DrmOptions) -> Result<(), ShellError> {
     let sources = DrmEventSources {
         session_notifier,
         drm_notifier,
+        udev,
         libinput,
         listening_socket,
         poll_fd,

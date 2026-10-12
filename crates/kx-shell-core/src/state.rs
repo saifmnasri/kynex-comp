@@ -163,6 +163,34 @@ impl KynexState {
     pub fn unmap_output(&mut self, output: &Output) {
         self.space.unmap_output(output);
     }
+
+    /// Migrates windows away from an unplugged output so they remain accessible on surviving outputs.
+    pub fn migrate_windows_from_unplugged(
+        &mut self,
+        unplugged_origin: Point<i32, Logical>,
+        unplugged_size: Size<i32, Logical>,
+        primary_origin: Point<i32, Logical>,
+        primary_size: Size<i32, Logical>,
+    ) {
+        let windows: Vec<(Window, Point<i32, Logical>)> = self
+            .space
+            .elements()
+            .filter_map(|w| self.space.element_location(w).map(|loc| (w.clone(), loc)))
+            .collect();
+
+        for (window, loc) in windows {
+            let new_loc = crate::drm::layout::migrate_window_position(
+                loc,
+                unplugged_origin,
+                unplugged_size,
+                primary_origin,
+                primary_size,
+            );
+            if new_loc != loc {
+                self.space.map_element(window, new_loc, false);
+            }
+        }
+    }
 }
 
 impl BufferHandler for KynexState {
@@ -366,5 +394,55 @@ mod tests {
             kx_input::KeySym::ESCAPE,
         );
         assert_eq!(action, Some(&kx_input::CompositorAction::Quit));
+    }
+
+    #[test]
+    fn test_map_unmap_output_and_migrate() {
+        use smithay::output::{PhysicalProperties, Subpixel};
+
+        let display = Display::<KynexState>::new().unwrap();
+        let mut state = KynexState::new(
+            &display.handle(),
+            "wayland-test-multi".to_string(),
+            Size::from((1280, 720)),
+        )
+        .unwrap();
+
+        assert_eq!(state.space.outputs().count(), 1);
+
+        let secondary = Output::new(
+            "DRM-2".to_string(),
+            PhysicalProperties {
+                size: (0, 0).into(),
+                subpixel: Subpixel::Unknown,
+                make: "Kynex".to_string(),
+                model: "HDMI".to_string(),
+            },
+        );
+        let sec_mode = smithay::output::Mode {
+            size: Size::from((1920, 1080)),
+            refresh: 60_000,
+        };
+        secondary.set_preferred(sec_mode);
+        secondary.change_current_state(
+            Some(sec_mode),
+            Some(Transform::Normal),
+            Some(Scale::Integer(1)),
+            Some(Point::from((1280, 0))),
+        );
+
+        state.map_output(&display.handle(), &secondary, Point::from((1280, 0)));
+        assert_eq!(state.space.outputs().count(), 2);
+
+        state.unmap_output(&secondary);
+        assert_eq!(state.space.outputs().count(), 1);
+
+        state.migrate_windows_from_unplugged(
+            Point::from((1280, 0)),
+            Size::from((1920, 1080)),
+            Point::from((0, 0)),
+            Size::from((1280, 720)),
+        );
+        assert_eq!(state.space.outputs().count(), 1);
     }
 }
