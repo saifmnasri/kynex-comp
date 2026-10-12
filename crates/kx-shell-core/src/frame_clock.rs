@@ -208,6 +208,19 @@ impl FrameClock {
         max
     }
 
+    /// Called when frame rendering resulted in no damage or state changes, so no page flip was queued.
+    ///
+    /// Resets the clock to `Idle` (or keeps it `Queued` if damage arrived during rendering).
+    pub fn on_render_skipped(&mut self) {
+        self.render_start = None;
+        if self.has_pending_damage_while_waiting {
+            self.has_pending_damage_while_waiting = false;
+            self.state = FrameState::Queued;
+        } else {
+            self.state = FrameState::Idle;
+        }
+    }
+
     fn record_render_duration(&mut self, duration: Duration) {
         if let Some(slot) = self.render_durations.get_mut(self.sample_index) {
             *slot = duration;
@@ -229,6 +242,19 @@ mod tests {
         assert_eq!(clock.frame_count(), 0);
         assert_eq!(clock.missed_vblanks(), 0);
         assert_eq!(clock.moving_max_render_duration(), Duration::ZERO);
+    }
+
+    #[test]
+    fn test_render_skipped_returns_to_idle() {
+        let mut clock = FrameClock::new(60_000);
+        let now = Instant::now();
+
+        clock.schedule_frame();
+        clock.on_render_begin(now).unwrap();
+        assert_eq!(clock.state(), FrameState::Queued);
+
+        clock.on_render_skipped();
+        assert_eq!(clock.state(), FrameState::Idle);
     }
 
     #[test]

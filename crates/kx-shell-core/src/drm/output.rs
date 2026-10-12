@@ -80,10 +80,17 @@ impl DrmOutputPipeline {
             renderer_formats,
         );
 
-        let render_elements = DrmOutputRenderElements::<
+        let mut render_elements = DrmOutputRenderElements::<
             GlesRenderer,
             WaylandSurfaceRenderElement<GlesRenderer>,
         >::default();
+        let [r, g, b, a] = crate::nested::DEFAULT_BG_COLOR;
+        let bg_color = smithay::backend::renderer::Color32F::new(r, g, b, a);
+        render_elements.add_output(
+            &crtc,
+            bg_color,
+            std::iter::empty::<WaylandSurfaceRenderElement<GlesRenderer>>(),
+        );
 
         let output = manager
             .initialize_output(

@@ -87,6 +87,12 @@ impl DrmLoopState {
             )
             .map_err(|err| ShellError::Output(format!("DRM render_frame error: {err:?}")))?;
 
+        if render_result.is_empty {
+            tracing::trace!("Render frame has no damage; skipping queue_frame");
+            self.clock.on_render_skipped();
+            return Ok(());
+        }
+
         if render_result.needs_sync() {
             if let PrimaryPlaneElement::Swapchain(ref element) = render_result.primary_element {
                 if let Err(err) = element.sync.wait() {
