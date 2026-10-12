@@ -17,7 +17,7 @@ use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
-use smithay::utils::{Physical, Point, Serial, Size, Transform};
+use smithay::utils::{Logical, Physical, Point, Serial, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
 use smithay::wayland::output::OutputHandler;
@@ -146,6 +146,22 @@ impl KynexState {
         };
         self.output
             .change_current_state(Some(mode), None, None, None);
+    }
+
+    /// Maps an additional display output into the compositor's global space.
+    pub fn map_output(
+        &mut self,
+        dh: &DisplayHandle,
+        output: &Output,
+        location: impl Into<Point<i32, Logical>>,
+    ) {
+        let _global = output.create_global::<Self>(dh);
+        self.space.map_output(output, location);
+    }
+
+    /// Unmaps a display output from the compositor's global space.
+    pub fn unmap_output(&mut self, output: &Output) {
+        self.space.unmap_output(output);
     }
 }
 
