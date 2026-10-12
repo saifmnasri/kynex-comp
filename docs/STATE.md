@@ -41,13 +41,11 @@
     - Step 2D.4: Libinput backend in `kx-shell-core::drm::input` with `LibinputInputBackend` and `process_keyboard_event` dispatching emergency exit shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
     - Step 2D.5: Main DRM execution loop in `kx-shell-core::drm::mod` with Calloop sources for Libinput, DRM page flips, Libseat VT pause/activate, SIGINT/SIGTERM, Wayland listening socket, client event loops, and frame pacing rendering `DEFAULT_BG_COLOR` clear color.
     - Step 2D.6: Systemd `sd_notify` readiness signal dispatched upon first successful page flip submission, and stopping notification on shutdown.
-    - Verification: `just check` green (fmt, clippy `-D warnings`, 50 unit tests, cargo-deny).
+    - Step 2D.7: Live hardware verification passed on TTY3 with DRM modeset, clear color render, `--exit-after 10s` clean timeout shutdown, and device drop.
+    - Verification: `just check` green (fmt, clippy `-D warnings`, 51 unit tests, cargo-deny).
 
 ## In progress
-- Milestone 2D live hardware test drill on TTY3 (`Ctrl+Option+F3` or `Fn+Ctrl+Option+F3`).
-  - Fixed logind `EINVAL` (`os error 22`) on `/dev/dri/card0` during `DrmGpuResources::init` by properly calling `session.close_device` after read-only inspection in `device::inspect_drm`.
-  - Fixed `DRM queue_frame error: EmptyFrame` by detecting empty render frames (`render_result.is_empty`) and skipping `queue_frame` while notifying `FrameClock::on_render_skipped()`, and setting the Tokyo Night clear color directly on `DrmOutputRenderElements` during `initialize_output` modeset commit.
-  - Ready for user verification run on TTY3.
+- Milestone 2E: Multi-output support, hardware cursor planes, and dynamic monitor hotplug handling.
 
 ## Next
 - Milestone 2E: Multi-output support, hardware cursor planes, and dynamic monitor hotplug handling.
