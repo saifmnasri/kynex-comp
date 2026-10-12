@@ -52,18 +52,20 @@ pub struct KynexState {
     pub space: Space<Window>,
     /// Popup manager tracking popup relationships.
     pub popups: PopupManager,
+    /// Active compositor key binding matcher.
+    pub binding_matcher: kx_input::BindingMatcher,
 }
 
 impl KynexState {
-    /// Creates a new compositor state with core protocol globals.
+    /// Creates a new compositor state with core protocol globals and the specified output.
     ///
     /// # Errors
     ///
     /// Returns a [`ShellError`] if seat input device initialization fails.
-    pub fn new(
+    pub fn new_with_output(
         dh: &DisplayHandle,
         socket_name: String,
-        initial_size: Size<i32, Physical>,
+        output: Output,
     ) -> Result<Self, ShellError> {
         let compositor_state = CompositorState::new::<Self>(dh);
         let shm_state = ShmState::new::<Self>(dh, vec![]);
@@ -74,6 +76,38 @@ impl KynexState {
         let _pointer = seat.add_pointer();
         let _keyboard = seat.add_keyboard(XkbConfig::default(), 200, 200)?;
 
+        let _global = output.create_global::<Self>(dh);
+
+        let xdg_shell_state = XdgShellState::new::<Self>(dh);
+        let mut space = Space::default();
+        space.map_output(&output, (0, 0));
+        let popups = PopupManager::default();
+        let binding_matcher = kx_input::BindingMatcher::with_defaults();
+
+        Ok(Self {
+            compositor_state,
+            shm_state,
+            seat_state,
+            seat,
+            output,
+            socket_name,
+            xdg_shell_state,
+            space,
+            popups,
+            binding_matcher,
+        })
+    }
+
+    /// Creates a new compositor state with core protocol globals and a default nested output.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ShellError`] if seat input device initialization fails.
+    pub fn new(
+        dh: &DisplayHandle,
+        socket_name: String,
+        initial_size: Size<i32, Physical>,
+    ) -> Result<Self, ShellError> {
         let output = Output::new(
             "WL-1".to_string(),
             PhysicalProperties {
@@ -100,24 +134,8 @@ impl KynexState {
             Some(Scale::Integer(1)),
             Some(Point::from((0, 0))),
         );
-        let _global = output.create_global::<Self>(dh);
 
-        let xdg_shell_state = XdgShellState::new::<Self>(dh);
-        let mut space = Space::default();
-        space.map_output(&output, (0, 0));
-        let popups = PopupManager::default();
-
-        Ok(Self {
-            compositor_state,
-            shm_state,
-            seat_state,
-            seat,
-            output,
-            socket_name,
-            xdg_shell_state,
-            space,
-            popups,
-        })
+        Self::new_with_output(dh, socket_name, output)
     }
 
     /// Updates the output geometry when the nested window is resized.
@@ -315,5 +333,22 @@ mod tests {
         state.update_output_size(new_size);
         let updated_mode = state.output.current_mode().unwrap();
         assert_eq!(updated_mode.size, new_size);
+    }
+
+    #[test]
+    fn test_binding_matcher_emergency_exit() {
+        let display = Display::<KynexState>::new().unwrap();
+        let state = KynexState::new(
+            &display.handle(),
+            "wayland-test-exit".to_string(),
+            Size::from((800, 600)),
+        )
+        .unwrap();
+
+        let action = state.binding_matcher.matches(
+            kx_input::KeyModifiers::CTRL | kx_input::KeyModifiers::SHIFT,
+            kx_input::KeySym::ESCAPE,
+        );
+        assert_eq!(action, Some(&kx_input::CompositorAction::Quit));
     }
 }

@@ -31,16 +31,6 @@ use crate::client::ClientState;
 use crate::error::ShellError;
 use crate::state::KynexState;
 
-/// Linux input event codes for emergency exit key combinations.
-const KEY_ESC: u32 = 1;
-const KEY_BACKSPACE: u32 = 14;
-const KEY_LEFTCTRL: u32 = 29;
-const KEY_RIGHTCTRL: u32 = 97;
-const KEY_LEFTSHIFT: u32 = 42;
-const KEY_RIGHTSHIFT: u32 = 54;
-const KEY_LEFTALT: u32 = 56;
-const KEY_RIGHTALT: u32 = 100;
-
 /// Default background color (#1a1a24 in sRGB floating-point).
 pub const DEFAULT_BG_COLOR: [f32; 4] = [
     26.0 / 255.0, // 0.101960785
@@ -74,73 +64,75 @@ pub struct NestedOptions {
     pub config: NestedConfig,
     /// Optional limit on the number of rendered frames before exiting (useful for testing).
     pub max_frames: Option<u64>,
+    /// Optional time limit before the compositor cleanly terminates.
+    pub exit_after: Option<Duration>,
 }
 
 /// Tracks emergency modifier keys.
-#[derive(Debug, Default, Clone, Copy)]
-struct EmergencyModifiers {
-    ctrl: bool,
-    shift: bool,
-    alt: bool,
-}
-
 /// Internal loop state passed to event source callbacks.
 struct NestedLoopState {
     running: bool,
     backend: WinitGraphicsBackend<GlesRenderer>,
     damage_tracker: OutputDamageTracker,
-    modifiers: EmergencyModifiers,
     pointer_location: Point<f64, Logical>,
     frame_count: u64,
     max_frames: Option<u64>,
+    exit_after: Option<Duration>,
     bg_color: Color32F,
     start_time: Instant,
     last_error: Option<ShellError>,
     state: KynexState,
     display: Display<KynexState>,
+    #[cfg(feature = "fault-injection")]
+    fault_controller: crate::fault::FaultController,
 }
 
 impl NestedLoopState {
-    fn handle_keyboard_emergency_exit(
-        &mut self,
-        event: &impl KeyboardKeyEvent<WinitInput>,
-    ) -> bool {
-        let key = event.key_code().raw();
-        let is_pressed = event.state() == KeyState::Pressed;
-
-        match key {
-            KEY_LEFTCTRL | KEY_RIGHTCTRL => self.modifiers.ctrl = is_pressed,
-            KEY_LEFTSHIFT | KEY_RIGHTSHIFT => self.modifiers.shift = is_pressed,
-            KEY_LEFTALT | KEY_RIGHTALT => self.modifiers.alt = is_pressed,
-            KEY_ESC if is_pressed && self.modifiers.ctrl && self.modifiers.shift => {
-                tracing::info!("Emergency exit key combination triggered (Ctrl+Shift+Escape)");
-                return true;
-            }
-            KEY_BACKSPACE if is_pressed && self.modifiers.ctrl && self.modifiers.alt => {
-                tracing::info!("Emergency exit key combination triggered (Ctrl+Alt+Backspace)");
-                return true;
-            }
-            _ => {}
-        }
-        false
-    }
-
     fn handle_keyboard_event(&mut self, event: &impl KeyboardKeyEvent<WinitInput>) {
-        if self.handle_keyboard_emergency_exit(event) {
-            self.running = false;
-            return;
-        }
-
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.state.seat.get_keyboard() {
-            keyboard.input::<(), _>(
+            let action = keyboard.input(
                 &mut self.state,
                 event.key_code(),
                 event.state(),
                 serial,
                 event.time_msec(),
-                |_data, _modifiers, _keysym| FilterResult::Forward,
+                |state, modifiers, keysym_handle| {
+                    if event.state() == KeyState::Pressed {
+                        let mut key_mods = kx_input::KeyModifiers::empty();
+                        if modifiers.ctrl {
+                            key_mods |= kx_input::KeyModifiers::CTRL;
+                        }
+                        if modifiers.shift {
+                            key_mods |= kx_input::KeyModifiers::SHIFT;
+                        }
+                        if modifiers.alt {
+                            key_mods |= kx_input::KeyModifiers::ALT;
+                        }
+                        if modifiers.logo {
+                            key_mods |= kx_input::KeyModifiers::LOGO;
+                        }
+
+                        let sym = kx_input::KeySym(keysym_handle.modified_sym().raw());
+                        if let Some(action) = state.binding_matcher.matches(key_mods, sym) {
+                            return FilterResult::Intercept(action.clone());
+                        }
+
+                        for raw_sym in keysym_handle.raw_syms() {
+                            let sym = kx_input::KeySym(raw_sym.raw());
+                            if let Some(action) = state.binding_matcher.matches(key_mods, sym) {
+                                return FilterResult::Intercept(action.clone());
+                            }
+                        }
+                    }
+                    FilterResult::Forward
+                },
             );
+
+            if let Some(kx_input::CompositorAction::Quit) = action {
+                tracing::info!("Emergency exit key combination triggered; shutting down");
+                self.running = false;
+            }
         }
     }
 
@@ -247,6 +239,24 @@ impl NestedLoopState {
     }
 
     fn render_frame(&mut self) -> Result<(), ShellError> {
+        self.frame_count = self.frame_count.saturating_add(1);
+
+        #[cfg(feature = "fault-injection")]
+        {
+            self.fault_controller.check_pre_render(self.frame_count);
+            if self.fault_controller.should_fail_gpu(self.frame_count) {
+                tracing::error!(
+                    frame = self.frame_count,
+                    "Fault-injection: simulating GPU context loss"
+                );
+                return Err(ShellError::SwapBuffers(
+                    smithay::backend::SwapBuffersError::ContextLost(Box::new(
+                        std::io::Error::other("Simulated GPU context loss via fault injection"),
+                    )),
+                ));
+            }
+        }
+
         // Dispatch pending client messages before compositing
         self.display
             .dispatch_clients(&mut self.state)
@@ -281,7 +291,6 @@ impl NestedLoopState {
             .flush_clients()
             .map_err(|e| ShellError::ClientDispatch(e.to_string()))?;
 
-        self.frame_count = self.frame_count.saturating_add(1);
         if let Some(max) = self.max_frames {
             if self.frame_count >= max {
                 tracing::info!(
@@ -388,17 +397,17 @@ fn handle_winit_event(event: &WinitEvent, loop_state: &mut NestedLoopState) {
 /// Runs the nested compositor with the winit backend.
 ///
 /// # Errors
-///
-/// Returns a [`ShellError`] if initialization fails or an unrecoverable event loop error occurs.
-pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
-    tracing::info!("Initializing nested winit backend");
-
-    let (backend, winit_event_loop) = winit::init::<GlesRenderer>()?;
-    backend.window().set_title(&options.config.title);
-
-    let [r, g, b, a] = options.config.background_color;
-    let bg_color = Color32F::new(r, g, b, a);
-
+fn create_display_and_state(
+    backend: &WinitGraphicsBackend<GlesRenderer>,
+) -> Result<
+    (
+        Display<KynexState>,
+        ListeningSocketSource,
+        KynexState,
+        OwnedFd,
+    ),
+    ShellError,
+> {
     let mut display: Display<KynexState> = Display::new()?;
     let listening_socket = ListeningSocketSource::new_auto()?;
     let socket_name = listening_socket
@@ -410,8 +419,67 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
 
     let state = KynexState::new(&display.handle(), socket_name, backend.window_size())?;
     let poll_fd = display.backend().poll_fd().try_clone_to_owned()?;
+    Ok((display, listening_socket, state, poll_fd))
+}
+
+fn register_exit_timer(
+    handle: &LoopHandle<'_, NestedLoopState>,
+    duration: Duration,
+) -> Result<(), ShellError> {
+    let timer = calloop::timer::Timer::from_duration(duration);
+    handle
+        .insert_source(timer, |_deadline, (), loop_state| {
+            tracing::info!("Exit-after timeout reached, shutting down");
+            loop_state.running = false;
+            calloop::timer::TimeoutAction::Drop
+        })
+        .map_err(|e| {
+            ShellError::SourceInsertion(format!("Failed to insert exit-after timer: {e}"))
+        })?;
+    Ok(())
+}
+
+fn run_event_loop(
+    event_loop: &mut EventLoop<'_, NestedLoopState>,
+    loop_state: &mut NestedLoopState,
+) -> Result<(), ShellError> {
+    while loop_state.running {
+        if let Some(limit) = loop_state.exit_after {
+            if loop_state.start_time.elapsed() >= limit {
+                tracing::info!("Exit-after duration elapsed, shutting down");
+                loop_state.running = false;
+                break;
+            }
+        }
+        event_loop.dispatch(Some(Duration::from_millis(16)), loop_state)?;
+        if let Err(err) = loop_state.display.flush_clients() {
+            tracing::error!(%err, "Failed to flush Wayland clients");
+        }
+    }
+    Ok(())
+}
+
+/// Runs the nested compositor with the winit backend.
+///
+/// # Errors
+///
+/// Returns a [`ShellError`] if initialization fails or an unrecoverable event loop error occurs.
+pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
+    tracing::info!("Initializing nested winit backend");
+
+    let (backend, winit_event_loop) = winit::init::<GlesRenderer>()?;
+    backend.window().set_title(&options.config.title);
+
+    let [r, g, b, a] = options.config.background_color;
+    let bg_color = Color32F::new(r, g, b, a);
+
+    let (display, listening_socket, state, poll_fd) = create_display_and_state(&backend)?;
     let damage_tracker = OutputDamageTracker::from_output(&state.output);
     let start_time = Instant::now();
+
+    #[cfg(feature = "fault-injection")]
+    let fault_controller = crate::fault::FaultController::from_env()
+        .map_err(|e| ShellError::Render(format!("Invalid fault spec: {e}")))?;
 
     let mut event_loop: EventLoop<'_, NestedLoopState> = EventLoop::try_new()?;
     register_event_sources(
@@ -425,25 +493,33 @@ pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
         running: true,
         backend,
         damage_tracker,
-        modifiers: EmergencyModifiers::default(),
         pointer_location: Point::from((0.0, 0.0)),
         frame_count: 0,
         max_frames: options.max_frames,
+        exit_after: options.exit_after,
         bg_color,
         start_time,
         last_error: None,
         state,
         display,
+        #[cfg(feature = "fault-injection")]
+        fault_controller,
     };
 
+    if let Some(duration) = options.exit_after {
+        register_exit_timer(&event_loop.handle(), duration)?;
+    }
+
     loop_state.backend.window().request_redraw();
+    if let Err(err) = kx_common::sd_notify(kx_common::notify_state::READY) {
+        tracing::warn!(%err, "Failed to send systemd READY notification");
+    }
     tracing::info!("Entering nested compositor main event loop");
 
-    while loop_state.running {
-        event_loop.dispatch(Some(Duration::from_millis(16)), &mut loop_state)?;
-        if let Err(err) = loop_state.display.flush_clients() {
-            tracing::error!(%err, "Failed to flush Wayland clients");
-        }
+    run_event_loop(&mut event_loop, &mut loop_state)?;
+
+    if let Err(err) = kx_common::sd_notify(kx_common::notify_state::STOPPING) {
+        tracing::warn!(%err, "Failed to send systemd STOPPING notification");
     }
 
     tracing::info!(

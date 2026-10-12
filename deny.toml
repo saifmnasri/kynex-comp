@@ -26,7 +26,10 @@ allow = [
 ]
 confidence-threshold = 0.93
 # MPL-2.0 and LGPL-* require explicit human approval: add a documented per-crate exception here, never a global allow.
-exceptions = []
+exceptions = [
+  # Approved for Phase 2 DRM/udev device discovery (dynamic linking)
+  { name = "udev", allow = ["LGPL-2.1", "LGPL-2.1-only", "LGPL-2.1-or-later"] },
+]
 
 [licenses.private]
 # Ignore unpublished workspace crates with proprietary license (publish = false)

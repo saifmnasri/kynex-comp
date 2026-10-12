@@ -7,9 +7,11 @@
 
 mod logging;
 mod panic_hook;
+mod systemd;
 
 pub use logging::{LoggingError, init_logging};
 pub use panic_hook::install_panic_hook;
+pub use systemd::{SystemdNotifyError, notify_state, sd_notify, sd_notify_to};
 
 /// Human-readable product name.
 pub const PRODUCT_NAME: &str = "KynexComp";

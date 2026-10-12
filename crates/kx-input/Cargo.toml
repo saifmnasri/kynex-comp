@@ -1,0 +1,16 @@
+[package]
+name = "kx-input"
+description = "Pure logic key bindings, modifier handling and action dispatch for KynexComp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kx-common.workspace = true
+bitflags.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
