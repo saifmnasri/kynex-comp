@@ -7,7 +7,7 @@ use proptest::prelude::*;
 
 use kx_layout::{
     ExclusiveMargins, MIN_ONSCREEN_HEIGHT, MIN_ONSCREEN_WIDTH, MapWindowParams, SizeConstraints,
-    WindowGeometry, WindowManager, clamp_to_reachability,
+    WindowGeometry, WindowId, WindowManager, clamp_to_reachability,
 };
 
 proptest! {
@@ -135,6 +135,95 @@ proptest! {
         // Unmap all created windows
         for wid in created {
             wm.unmap_window(wid);
+            prop_assert!(wm.check_invariants());
+        }
+    }
+
+    /// Verifies that arbitrary byte sequences exercising window manager operations
+    /// never cause panics, arithmetic overflows, or invariant violations.
+    #[test]
+    fn arbitrary_bytes_fuzz_never_panics(data in any::<Vec<u8>>()) {
+        if data.is_empty() {
+            return Ok(());
+        }
+
+        let mut wm = WindowManager::new(4);
+        let usable = WindowGeometry::new(0, 32, 1920, 1048);
+        let output = WindowGeometry::new(0, 0, 1920, 1080);
+        let mut mapped_windows: Vec<WindowId> = Vec::new();
+
+        let chunks = data.chunks_exact(8);
+        for chunk in chunks {
+            let op = chunk.first().copied().unwrap_or(0) % 9;
+            let x = i32::from(chunk.get(1).copied().unwrap_or(0)) * 10;
+            let y = i32::from(chunk.get(2).copied().unwrap_or(0)) * 10;
+            let w = (i32::from(chunk.get(3).copied().unwrap_or(1)) * 10).max(1);
+            let h = (i32::from(chunk.get(4).copied().unwrap_or(1)) * 10).max(1);
+            let target_ws_idx = usize::from(chunk.get(5).copied().unwrap_or(0)) % 4;
+
+            match op {
+                0 => {
+                    if mapped_windows.len() < 16 {
+                        let target_ws = wm.workspaces().workspace_ids().get(target_ws_idx).copied();
+                        let params = MapWindowParams {
+                            geometry: WindowGeometry::new(x, y, w, h),
+                            constraints: SizeConstraints::default(),
+                            title: "fuzz_win",
+                            app_id: "fuzz_app",
+                            target_workspace: target_ws,
+                            usable_area: usable,
+                            focus_new_windows_cfg: true,
+                        };
+                        if let Ok(wid) = wm.map_window(&params) {
+                            mapped_windows.push(wid);
+                        }
+                    }
+                }
+                1 => {
+                    if let Some(&wid) = mapped_windows.get(target_ws_idx % mapped_windows.len().max(1)) {
+                        wm.maximize_window(wid, usable);
+                    }
+                }
+                2 => {
+                    if let Some(&wid) = mapped_windows.get(target_ws_idx % mapped_windows.len().max(1)) {
+                        wm.unmaximize_window(wid, usable);
+                    }
+                }
+                3 => {
+                    if let Some(&wid) = mapped_windows.get(target_ws_idx % mapped_windows.len().max(1)) {
+                        wm.fullscreen_window(wid, output);
+                    }
+                }
+                4 => {
+                    if let Some(&wid) = mapped_windows.get(target_ws_idx % mapped_windows.len().max(1)) {
+                        wm.minimize_window(wid);
+                    }
+                }
+                5 => {
+                    if let Some(&wid) = mapped_windows.get(target_ws_idx % mapped_windows.len().max(1)) {
+                        wm.unminimize_window(wid, usable);
+                    }
+                }
+                6 => {
+                    if let Some(&wid) = mapped_windows.get(target_ws_idx % mapped_windows.len().max(1)) {
+                        wm.center_window(wid, usable);
+                    }
+                }
+                7 => {
+                    if let Some(&wid) = mapped_windows.get(target_ws_idx % mapped_windows.len().max(1)) {
+                        if let Some(&ws_id) = wm.workspaces().workspace_ids().get(target_ws_idx) {
+                            let _ = wm.move_to_workspace(wid, ws_id);
+                        }
+                    }
+                }
+                8 if !mapped_windows.is_empty() => {
+                    let remove_idx = target_ws_idx % mapped_windows.len();
+                    let wid = mapped_windows.remove(remove_idx);
+                    wm.unmap_window(wid);
+                }
+                _ => {}
+            }
+
             prop_assert!(wm.check_invariants());
         }
     }
