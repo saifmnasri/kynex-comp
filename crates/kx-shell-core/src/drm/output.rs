@@ -204,7 +204,7 @@ impl DrmOutputPipeline {
         }
 
         let render_elements: [WaylandSurfaceRenderElement<GlesRenderer>; 0] = [];
-        let frame_mode = FrameFlags::DEFAULT;
+        let frame_mode = FrameFlags::DEFAULT | FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT;
 
         let render_result = entry
             .output
@@ -254,6 +254,38 @@ impl DrmOutputPipeline {
             self.render_output_frame(crtc, gpu, bg_color)?;
         }
         Ok(())
+    }
+
+    /// Returns the global bounding box size spanning all active mapped outputs.
+    #[must_use]
+    pub fn global_bounds(&self) -> smithay::utils::Size<i32, Logical> {
+        let max_x = self
+            .outputs
+            .values()
+            .map(|e| {
+                let w = e
+                    .kynex_output
+                    .current_mode()
+                    .map_or(1920, |m| m.size.to_logical(1).w);
+                e.position.x.saturating_add(w)
+            })
+            .max()
+            .unwrap_or(1920);
+
+        let max_y = self
+            .outputs
+            .values()
+            .map(|e| {
+                let h = e
+                    .kynex_output
+                    .current_mode()
+                    .map_or(1080, |m| m.size.to_logical(1).h);
+                e.position.y.saturating_add(h)
+            })
+            .max()
+            .unwrap_or(1080);
+
+        smithay::utils::Size::from((max_x, max_y))
     }
 }
 

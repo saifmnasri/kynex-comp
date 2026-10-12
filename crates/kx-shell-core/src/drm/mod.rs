@@ -26,6 +26,7 @@ use smithay::backend::session::libseat::LibSeatSessionNotifier;
 use smithay::backend::udev::{UdevBackend, UdevEvent};
 use smithay::output::Output;
 use smithay::reexports::wayland_server::Display;
+use smithay::utils::{Logical, Point};
 use smithay::wayland::socket::ListeningSocketSource;
 use tracing::info;
 
@@ -60,6 +61,7 @@ struct DrmLoopState {
     start_time: Instant,
     bg_color: Color32F,
     last_error: Option<ShellError>,
+    pointer_location: Point<f64, Logical>,
     state: KynexState,
     display: Display<KynexState>,
 }
@@ -108,7 +110,13 @@ fn register_event_sources(
 
     loop_handle
         .insert_source(sources.libinput, |event, (), loop_state| {
-            if input::process_input_event(event, &mut loop_state.state) {
+            let bounds = loop_state.pipeline.global_bounds();
+            if input::process_input_event(
+                event,
+                &mut loop_state.state,
+                &mut loop_state.pointer_location,
+                bounds,
+            ) {
                 loop_state.running = false;
             }
         })
@@ -378,6 +386,7 @@ pub fn run_drm(options: &DrmOptions) -> Result<(), ShellError> {
         start_time: Instant::now(),
         bg_color,
         last_error: None,
+        pointer_location: Point::from((0.0, 0.0)),
         state,
         display,
     };
