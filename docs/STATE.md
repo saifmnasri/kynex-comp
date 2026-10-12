@@ -69,10 +69,13 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- None (Phase 2 closed, merged into `main`, tagged `phase-2-complete`).
+- **Phase 3 (Window Management):**
+  - Branch: `feat/phase-3-window-management` (from `dev`).
+  - Step 3A.1: Architecture decisions ADR-0024 through ADR-0030 recorded in `docs/DECISIONS.md`. Implementation plan approved.
 
 ## Next
-- Phase 3: Window management, workspaces, and floating layout.
+- Step 3B.1: Create `kx-layout` crate scaffold (pure-logic window/workspace/focus model).
+- Step 3B.2: Implement window model types with size constraints and string caps.
 
 ## Verify commands
 - `just check`

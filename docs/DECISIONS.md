@@ -111,3 +111,42 @@ Format: `ADR-NNNN — title — status — context — decision — consequences
 - Frame production state machine overhead is $< 9$ ns per frame ($< 0.00025\%$ of the 4 ms budget).
 - Zero memory allocation during frame timing recording and percentile querying.
 - Automated benchmarks verify that all pure-logic paths operate well beneath latency budgets.
+
+## ADR-0024 — Global workspace model (Phase 3) — Accepted
+**Context:** Phase 3 introduces multiple workspaces. Power users often desire per-output workspaces (where switching one monitor does not switch others), while standard desktop users expect global workspaces (switching workspaces changes all connected monitors together).
+**Decision:** Adopt a global workspace model for Phase 3. The internal `WorkspaceManager` partitions windows by workspace ID (`SlotMap<WorkspaceId, Workspace>`), keeping window collections modular so per-output workspace mapping can be introduced in later phases without altering window data structures.
+**Consequences:** Keeps reachability invariants, focus stack, and multi-monitor stacking clear and verifiable. Adheres to Rule 00 ("simplest design that satisfies the phase").
+
+## ADR-0025 — Layer-shell privilege policy: deny by default with config allow-list — Accepted
+**Context:** `zwlr_layer_shell_v1` surfaces can reserve exclusive screen space, display over other applications, and take keyboard focus. Allowing arbitrary Wayland clients to bind layer shell creates serious security and denial-of-service risks (Rule 05).
+**Decision:** Hide the `zwlr_layer_shell_v1` global by default using `WlrLayerShellState::new_with_filter` / `GlobalDispatch::can_view`. Resolve the client executable path from `/proc/<pid>/exe` at socket connection accept time and cache it in `ClientState`. A client may only view and bind layer shell if its absolute executable path matches an entry in `[privilege.layer_shell_allow]` (or UID check passes). If path resolution fails, access is denied immediately (fail closed). Every denial logs a structured `tracing::warn!` with PID, UID, and resolved path. Re-check privilege on `get_layer_surface`.
+**Consequences:** Complete isolation against unprivileged rogue clients attempting to occlude the desktop or spoof system UI.
+
+## ADR-0026 — Server-side decorations: title-less geometry with colored square buttons — Accepted
+**Context:** Server-side decorations (SSD) require drawing borders, title bars, and window control buttons. Drawing text titles requires font rasterization (`ab_glyph`), asset management, and font file licensing, adding significant dependency surface before Phase 7.
+**Decision:** Implement title-less server-side decorations with solid-colored geometric buttons: red square for close, green square for maximize, yellow square for minimize. Geometry calculation and hit-testing are pure logic in `kx-layout`. Decorations are drawn via `SolidColorRenderElement`. Fullscreen windows completely hide decorations.
+**Consequences:** Zero external font dependencies, zero glyph rasterization overhead, crisp UI, fully testable hit-testing.
+
+## ADR-0027 — Minimize behavior: real minimize with Alt+Tab and recovery restore — Accepted
+**Context:** Wayland clients can request minimization via `xdg_toplevel::set_minimized`. Phase exit criteria mandate that if minimize is implemented, a reliable restore path must exist.
+**Decision:** Implement real minimization. Minimized windows are unmapped from Smithay's `Space` and omitted from rendering, but retained in `FocusStack` and `WindowManager`. Restoring can occur via `Alt+Tab` focus cycling (which visits and unminimizes minimized windows) or via a dedicated recovery keybinding (`Super+C` in DRM, `Ctrl+Alt+C` in dev) which unminimizes and centers the topmost minimized window.
+**Consequences:** Full window lifecycle support without stranded/lost windows.
+
+## ADR-0028 — Config schema versioning: additive version 1 with last-good retention — Accepted
+**Context:** Phase 3 introduces new configuration sections: `[keybindings]`, `[privilege]`, `[decorations]`, and `[workspaces]`. The current config version is `1`.
+**Decision:** Maintain `config_version = 1`. New sections are purely additive with `#[serde(default)]` and sensible defaults, preserving compatibility with existing Phase 1 and 2 configs. If a malformed configuration or invalid keybinding combination is provided on config hot-reload, the compositor logs a structured error, retains the last known good configuration in memory, and continues running.
+**Consequences:** Zero breaking changes to existing deployments, robust hot-reload resilience.
+
+## ADR-0029 — Fullscreen Z-order and interaction rules — Accepted
+**Context:** Windows in `Fullscreen` state must interact properly with layer surfaces (status bars, docks, wallpapers) and server-side decorations.
+**Decision:**
+1. Fullscreen windows sit above the `Top` layer surface layer (between `Top` and `Overlay`).
+2. Server-side decorations are hidden while a window is in `Fullscreen` state.
+3. Layer-surface exclusive zones are ignored when positioning and rendering fullscreen windows (the window occupies the full display mode bounds).
+4. Compositor emergency exit (`Ctrl+Alt+Shift+Q`) always preempts fullscreen windows.
+**Consequences:** Proper immersive fullscreen gaming/video presentation without dock occlusion or decoration artifacts.
+
+## ADR-0030 — Authoritative WindowManager and Space projection synchronization — Accepted
+**Context:** In Smithay, `Space<Window>` handles window spatial placement and rendering element iteration. Having business logic directly mutate `Space` without a central model leads to desynchronized workspace, focus, and reachability state.
+**Decision:** `WindowManager` in `kx-layout` is the sole authoritative source of truth for window geometry, state, focus, and workspace assignment. Smithay's `Space` is treated as a pure projection updated exclusively through a single synchronization function: `sync_space(&mut self)`. Every model mutation calls `sync_space()` and schedules a frame (`request_frame()`). An integration test asserts that `WindowManager` and `Space` are in complete agreement after every operation.
+**Consequences:** Clear architectural boundary, eliminate desync bugs, fully testable state machine independent of Smithay rendering.
