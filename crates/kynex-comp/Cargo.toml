@@ -15,5 +15,9 @@ calloop.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
 
+[features]
+fault-injection = ["kx-shell-core/fault-injection"]
+
 [lints]
 workspace = true
+

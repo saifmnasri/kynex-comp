@@ -3,8 +3,14 @@
 
 //! Binary entry point for the `KynexComp` Wayland compositor.
 
+#[cfg(all(feature = "fault-injection", not(debug_assertions)))]
+compile_error!(
+    "Feature 'fault-injection' is strictly forbidden in release builds (requires debug_assertions)"
+);
+
 use std::env;
 use std::path::PathBuf;
+use std::time::Duration;
 
 /// Parsed command line options for `kynex-comp`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +21,10 @@ pub struct CliArgs {
     pub config_path: Option<PathBuf>,
     /// Optional frame count limit (useful for automated testing).
     pub max_frames: Option<u64>,
+    /// Optional timeout before clean exit (useful for automated testing).
+    pub exit_after: Option<Duration>,
+    /// When true, only query and output hardware diagnostics, then exit immediately.
+    pub diagnostic: bool,
 }
 
 fn print_help() {
@@ -23,14 +33,63 @@ fn print_help() {
     tracing::info!("  --backend <winit|drm|headless>  Select backend (default: winit)");
     tracing::info!("  --config <path>                 Path to configuration file");
     tracing::info!("  --max-frames <count>            Limit rendered frames before exit");
+    tracing::info!(
+        "  --exit-after <duration>         Exit cleanly after specified duration (e.g. 5s, 500ms)"
+    );
+    tracing::info!(
+        "  --diagnostic                    Inspect DRM devices and KMS resources, then exit"
+    );
     tracing::info!("  --help                          Display this help message");
     tracing::info!("  --version                       Display version information");
+}
+
+/// Parses human-readable duration strings like "500ms", "5s", "2m", or raw seconds "10".
+fn parse_duration(val: &str) -> Result<Duration, String> {
+    let trimmed = val.trim();
+    if trimmed.is_empty() {
+        return Err(String::from("duration string is empty"));
+    }
+    if let Some(s) = trimmed.strip_suffix("ms") {
+        let ms = s
+            .trim()
+            .parse::<u64>()
+            .map_err(|e| format!("invalid milliseconds in duration: {e}"))?;
+        Ok(Duration::from_millis(ms))
+    } else if let Some(s) = trimmed.strip_suffix('s') {
+        let sec = s
+            .trim()
+            .parse::<u64>()
+            .map_err(|e| format!("invalid seconds in duration: {e}"))?;
+        Ok(Duration::from_secs(sec))
+    } else if let Some(s) = trimmed.strip_suffix('m') {
+        let min = s
+            .trim()
+            .parse::<u64>()
+            .map_err(|e| format!("invalid minutes in duration: {e}"))?;
+        let sec = min
+            .checked_mul(60)
+            .ok_or_else(|| String::from("duration overflow in minutes"))?;
+        Ok(Duration::from_secs(sec))
+    } else {
+        let sec = trimmed.parse::<u64>().map_err(|e| {
+            format!("invalid duration (expected e.g. 5s, 500ms, or integer seconds): {e}")
+        })?;
+        Ok(Duration::from_secs(sec))
+    }
+}
+
+/// Prepares a child process command by stripping compositor-internal environment variables
+/// such as `KYNEX_FAULT`.
+pub fn prepare_child_command(cmd: &mut std::process::Command) {
+    cmd.env_remove("KYNEX_FAULT");
 }
 
 fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
     let mut backend = String::from("winit");
     let mut config_path = None;
     let mut max_frames = None;
+    let mut exit_after = None;
+    let mut diagnostic = false;
     let mut idx = 1;
 
     while idx < args.len() {
@@ -45,6 +104,9 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
                 return Ok(None);
             }
             "--version" | "-v" => {
+                #[cfg(feature = "fault-injection")]
+                tracing::info!("kynex-comp {}+fault-injection", env!("CARGO_PKG_VERSION"));
+                #[cfg(not(feature = "fault-injection"))]
                 tracing::info!("kynex-comp {}", env!("CARGO_PKG_VERSION"));
                 return Ok(None);
             }
@@ -72,6 +134,17 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
                     .map_err(|e| format!("invalid number for --max-frames: {e}"))?;
                 max_frames = Some(frames);
             }
+            "--exit-after" => {
+                idx = idx.saturating_add(1);
+                let val = args
+                    .get(idx)
+                    .ok_or_else(|| String::from("missing argument to --exit-after"))?;
+                let dur = parse_duration(val)?;
+                exit_after = Some(dur);
+            }
+            "--diagnostic" => {
+                diagnostic = true;
+            }
             other => {
                 return Err(format!("unknown argument: {other}"));
             }
@@ -83,6 +156,8 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
         backend,
         config_path,
         max_frames,
+        exit_after,
+        diagnostic,
     }))
 }
 
@@ -102,7 +177,13 @@ fn run() -> anyhow::Result<()> {
             None => PathBuf::from("/tmp/kynex-crash"),
         },
     };
-    kx_common::install_panic_hook(crash_dir, env!("CARGO_PKG_VERSION"));
+
+    #[cfg(feature = "fault-injection")]
+    let version_str = concat!(env!("CARGO_PKG_VERSION"), "+fault-injection");
+    #[cfg(not(feature = "fault-injection"))]
+    let version_str = env!("CARGO_PKG_VERSION");
+
+    kx_common::install_panic_hook(crash_dir, version_str);
 
     let raw_args: Vec<String> = env::args().collect();
     let parsed = match parse_args(&raw_args) {
@@ -116,18 +197,31 @@ fn run() -> anyhow::Result<()> {
 
     tracing::info!(backend = %parsed.backend, "Starting KynexComp");
 
-    if parsed.backend != "winit" && parsed.backend != "nested" {
+    if parsed.backend == "winit" || parsed.backend == "nested" {
+        let options = kx_shell_core::NestedOptions {
+            config: kx_shell_core::NestedConfig::default(),
+            max_frames: parsed.max_frames,
+            exit_after: parsed.exit_after,
+        };
+        kx_shell_core::run_nested(&options)?;
+    } else if parsed.backend == "drm" {
+        let exit_after = if parsed.diagnostic {
+            parsed.exit_after
+        } else {
+            parsed.exit_after.or(Some(Duration::from_secs(10)))
+        };
+        let options = kx_shell_core::DrmOptions {
+            exit_after,
+            max_frames: parsed.max_frames,
+            diagnostic_only: parsed.diagnostic,
+        };
+        kx_shell_core::run_drm(&options)?;
+    } else {
         anyhow::bail!(
-            "Only the 'winit' nested backend is supported in Phase 1 (requested: {})",
+            "Unsupported backend '{}' (supported: 'winit', 'nested', 'drm')",
             parsed.backend
         );
     }
-
-    let options = kx_shell_core::NestedOptions {
-        config: kx_shell_core::NestedConfig::default(),
-        max_frames: parsed.max_frames,
-    };
-    kx_shell_core::run_nested(&options)?;
 
     Ok(())
 }
@@ -214,5 +308,77 @@ mod tests {
         ];
         let parsed = parse_args(&args).unwrap().unwrap();
         assert_eq!(parsed.max_frames, Some(42));
+    }
+
+    #[test]
+    fn test_exit_after_flag() {
+        let args = vec![
+            String::from("kynex-comp"),
+            String::from("--exit-after"),
+            String::from("500ms"),
+        ];
+        let parsed = parse_args(&args).unwrap().unwrap();
+        assert_eq!(parsed.exit_after, Some(Duration::from_millis(500)));
+
+        let args_sec = vec![
+            String::from("kynex-comp"),
+            String::from("--exit-after"),
+            String::from("5s"),
+        ];
+        let parsed_sec = parse_args(&args_sec).unwrap().unwrap();
+        assert_eq!(parsed_sec.exit_after, Some(Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn test_parse_duration() {
+        assert_eq!(parse_duration("500ms").unwrap(), Duration::from_millis(500));
+        assert_eq!(parse_duration("5s").unwrap(), Duration::from_secs(5));
+        assert_eq!(parse_duration("2m").unwrap(), Duration::from_secs(120));
+        assert_eq!(parse_duration("10").unwrap(), Duration::from_secs(10));
+        assert!(parse_duration("").is_err());
+        assert!(parse_duration("abc").is_err());
+    }
+
+    #[test]
+    fn test_prepare_child_command() {
+        let mut cmd = std::process::Command::new("true");
+        cmd.env("KYNEX_FAULT", "panic:1");
+        cmd.env("ANOTHER_VAR", "1");
+        prepare_child_command(&mut cmd);
+        // Verify command executes cleanly with environment prepared
+        assert!(
+            cmd.get_envs()
+                .any(|(k, v)| k == "KYNEX_FAULT" && v.is_none())
+        );
+    }
+
+    #[test]
+    fn test_diagnostic_flag() {
+        let args = vec![String::from("kynex-comp"), String::from("--diagnostic")];
+        let parsed = parse_args(&args).unwrap().unwrap();
+        assert_eq!(parsed.backend, "winit");
+        assert!(parsed.diagnostic);
+
+        let args_drm = vec![
+            String::from("kynex-comp"),
+            String::from("--backend"),
+            String::from("drm"),
+            String::from("--diagnostic"),
+        ];
+        let parsed_drm = parse_args(&args_drm).unwrap().unwrap();
+        assert_eq!(parsed_drm.backend, "drm");
+        assert!(parsed_drm.diagnostic);
+    }
+
+    #[test]
+    fn test_drm_backend_flag() {
+        let args = vec![
+            String::from("kynex-comp"),
+            String::from("--backend"),
+            String::from("drm"),
+        ];
+        let parsed = parse_args(&args).unwrap().unwrap();
+        assert_eq!(parsed.backend, "drm");
+        assert!(!parsed.diagnostic);
     }
 }

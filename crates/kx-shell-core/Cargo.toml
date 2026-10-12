@@ -10,16 +10,49 @@ publish.workspace = true
 [dependencies]
 kx-common.workspace = true
 kx-config.workspace = true
+kx-input.workspace = true
 smithay.workspace = true
 calloop.workspace = true
 slotmap.workspace = true
 bitflags.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+xcursor.workspace = true
 
 [dev-dependencies]
 wayland-client.workspace = true
 wayland-protocols.workspace = true
 
-[lints]
-workspace = true
+[features]
+fault-injection = []
+
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unused_must_use = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+string_slice = "deny"
+exit = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+undocumented_unsafe_blocks = "deny"
+mem_forget = "deny"
+rc_mutex = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+module_name_repetitions = "allow"
+missing_errors_doc = "warn"
+missing_panics_doc = "warn"
+
