@@ -71,17 +71,27 @@ The following hardware-dependent verification items are deferred until physical 
 ## In progress
 - **Phase 3 (Window Management):**
   - Branch: `feat/phase-3-window-management` (from `dev`).
-  - Step 3A.1: Architecture decisions ADR-0024 through ADR-0030 recorded in `docs/DECISIONS.md`. Implementation plan approved.
+  - **Sub-phase 3A (Architecture & ADRs) — DONE:**
+    - Step 3A.1: Architecture decisions ADR-0024 through ADR-0030 recorded in `docs/DECISIONS.md`. Implementation plan approved.
+  - **Sub-phase 3B (Pure-Logic Layout Engine `kx-layout`) — DONE:**
+    - Step 3B.1: Pure-logic crate `kx-layout` scaffold created with strict `#![forbid(unsafe_code)]` and zero panics.
+    - Step 3B.2: Window model types in `crates/kx-layout/src/window.rs` (`WindowId`, `WindowState`, `WindowGeometry`, `SizeConstraints`, safe clamping, safe UTF-8 truncation).
+    - Step 3B.3: Workspace model in `crates/kx-layout/src/workspace.rs` (`Workspace`, `WorkspaceId`, `WorkspaceManager`, anti-DoS bound `MAX_WINDOWS_PER_WORKSPACE = 256`, non-panicking `check_invariants()`).
+    - Step 3B.4: Focus stack and stacking order in `crates/kx-layout/src/focus.rs` (`FocusStack`, `StackingOrder`, `FocusPolicy`, `AltTabSession` with wrap-around, `should_focus_new_window`).
+    - Step 3B.5: Floating layout engine in `crates/kx-layout/src/engine.rs` (`FloatingLayout`, `CascadeTracker`, `ExclusiveMargins`, `clamp_to_reachability`, `center_window`).
+    - Step 3B.6: Authoritative `WindowManager` coordinator in `crates/kx-layout/src/manager.rs` uniting window entities, workspaces, focus stacks, stacking order, and layout engines with `MapWindowParams` and invariant verification.
+    - Step 3B.7: Property tests in `crates/kx-layout/tests/layout_properties.rs` with `proptest` verifying reachability clamping guarantees, exclusive margins math, size constraints clamping, and WindowManager invariant preservation.
+    - Step 3B.8: Structured byte-driven layout fuzz target harness in `fuzz/fuzz_targets/layout_ops.rs` and byte fuzz test in `layout_properties.rs`.
 
 ## Next
-- Step 3B.1: Create `kx-layout` crate scaffold (pure-logic window/workspace/focus model).
-- Step 3B.2: Implement window model types with size constraints and string caps.
+- Sub-phase 3C: XDG Toplevel Lifecycle in `kx-shell-core` (Step 3C.1: Add `kx-layout` dependency and wire `WindowManager` into `KynexState`).
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-layout`
+- `cargo test -p kx-layout --test layout_properties`
 - `cargo test --workspace --features fault-injection --locked`
 - `cargo check --release`
-- `cargo run -p kynex-comp -- --backend drm --diagnostic` (Run manually from TTY3 only)
-- `cargo run -p kynex-comp -- --backend drm --exit-after 5s` (Run manually from TTY3 only)
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`
+
 
