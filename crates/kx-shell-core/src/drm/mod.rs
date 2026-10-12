@@ -7,6 +7,7 @@ pub mod device;
 pub mod egl;
 pub mod gpu;
 pub mod input;
+pub mod layout;
 pub mod output;
 pub mod session;
 
@@ -31,6 +32,7 @@ use tracing::info;
 
 pub use device::{ConnectorInfo, DrmDeviceInfo, DrmDiagnosticReport, ModeInfo};
 pub use gpu::DrmGpuResources;
+pub use layout::{ConnectorCandidate, OutputAssignment, allocate_outputs, migrate_window_position};
 pub use output::DrmOutputPipeline;
 pub use session::DrmSession;
 
