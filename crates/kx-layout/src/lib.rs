@@ -9,6 +9,7 @@
 
 pub mod engine;
 pub mod focus;
+pub mod manager;
 pub mod window;
 pub mod workspace;
 
@@ -18,6 +19,7 @@ pub use engine::{
     fullscreen_geometry, maximized_geometry,
 };
 pub use focus::{AltTabSession, FocusPolicy, FocusStack, StackingOrder, should_focus_new_window};
+pub use manager::{MapWindowParams, WindowManager};
 pub use window::{
     MAX_STRING_BYTES, OutputId, SizeConstraints, WindowData, WindowGeometry, WindowId, WindowState,
     truncate_utf8,

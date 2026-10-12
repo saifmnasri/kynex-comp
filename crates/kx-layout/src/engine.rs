@@ -185,7 +185,7 @@ pub trait LayoutEngine: Send + Sync {
         &self,
         output_geo: WindowGeometry,
         usable_area: WindowGeometry,
-        windows: &mut [(&WindowId, &mut WindowData)],
+        windows: &mut [(WindowId, &mut WindowData)],
     );
 }
 
@@ -198,7 +198,7 @@ impl LayoutEngine for FloatingLayout {
         &self,
         output_geo: WindowGeometry,
         usable_area: WindowGeometry,
-        windows: &mut [(&WindowId, &mut WindowData)],
+        windows: &mut [(WindowId, &mut WindowData)],
     ) {
         for (_wid, win) in windows {
             match win.state {
@@ -342,7 +342,7 @@ mod tests {
         win3.state = WindowState::Fullscreen;
 
         let layout = FloatingLayout;
-        let mut items = [(&w1, &mut win1), (&w2, &mut win2), (&w3, &mut win3)];
+        let mut items = [(w1, &mut win1), (w2, &mut win2), (w3, &mut win3)];
         layout.arrange(output, usable, &mut items);
 
         // win1 normal remains reachable
