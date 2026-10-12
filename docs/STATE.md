@@ -45,6 +45,8 @@
 
 ## In progress
 - Milestone 2D live hardware test drill on TTY3 (`Ctrl+Option+F3`).
+  - Fixed logind `EINVAL` (`os error 22`) on `/dev/dri/card0` during `DrmGpuResources::init` by properly calling `session.close_device` after read-only inspection in `device::inspect_drm`.
+  - Ready for verification run on TTY3.
 
 ## Next
 - Milestone 2E: Multi-output support, hardware cursor planes, and dynamic monitor hotplug handling.
