@@ -59,6 +59,7 @@ pub struct FrameClock {
     missed_vblanks: u64,
     frame_count: u64,
     has_pending_damage_while_waiting: bool,
+    last_vblank: Option<Instant>,
 }
 
 impl FrameClock {
@@ -82,6 +83,7 @@ impl FrameClock {
             missed_vblanks: 0,
             frame_count: 0,
             has_pending_damage_while_waiting: false,
+            last_vblank: None,
         }
     }
 
@@ -167,18 +169,38 @@ impl FrameClock {
 
     /// Called when the hardware confirms page-flip presentation (vblank).
     ///
+    /// Checks elapsed presentation time against the nominal refresh interval and records
+    /// any missed vblank intervals.
+    ///
     /// # Returns
     /// Returns `Ok(true)` if another frame is already queued due to damage arriving while waiting,
     /// or `Ok(false)` if the clock transitions back to `Idle`.
     ///
     /// # Errors
     /// Returns [`FrameClockError::UnexpectedVBlank`] if a vblank was received when no frame was waiting.
-    pub fn on_vblank(&mut self, _presentation_time: Instant) -> Result<bool, FrameClockError> {
+    pub fn on_vblank(&mut self, presentation_time: Instant) -> Result<bool, FrameClockError> {
         if self.state != FrameState::WaitingForVBlank {
             return Err(FrameClockError::UnexpectedVBlank(self.state));
         }
 
         self.frame_count = self.frame_count.saturating_add(1);
+
+        if let Some(prev) = self.last_vblank {
+            let elapsed = presentation_time.saturating_duration_since(prev);
+            let threshold = self
+                .refresh_interval
+                .saturating_add(self.refresh_interval / 2);
+            if elapsed > threshold {
+                let interval_nanos = self.refresh_interval.as_nanos().max(1);
+                let missed_ratio = elapsed.as_nanos() / interval_nanos;
+                let missed_count = missed_ratio.saturating_sub(1);
+                if missed_count > 0 {
+                    let missed_u64 = u64::try_from(missed_count).unwrap_or(u64::MAX);
+                    self.missed_vblanks = self.missed_vblanks.saturating_add(missed_u64);
+                }
+            }
+        }
+        self.last_vblank = Some(presentation_time);
 
         if self.has_pending_damage_while_waiting {
             self.has_pending_damage_while_waiting = false;
@@ -187,6 +209,45 @@ impl FrameClock {
         } else {
             self.state = FrameState::Idle;
             Ok(false)
+        }
+    }
+
+    /// Returns the most recent recorded frame render duration, if any.
+    #[must_use]
+    pub fn last_render_duration(&self) -> Duration {
+        if self.sample_count == 0 {
+            return Duration::ZERO;
+        }
+        let last_idx = if self.sample_index == 0 {
+            RENDER_SAMPLES_CAPACITY.saturating_sub(1)
+        } else {
+            self.sample_index.saturating_sub(1)
+        };
+        self.render_durations
+            .get(last_idx)
+            .copied()
+            .unwrap_or(Duration::ZERO)
+    }
+
+    /// Computes the 99th percentile render duration over the recent sample window.
+    #[must_use]
+    pub fn p99_render_duration(&self) -> Duration {
+        if self.sample_count == 0 {
+            return Duration::ZERO;
+        }
+        let count = self.sample_count.min(RENDER_SAMPLES_CAPACITY);
+        let mut sorted = [Duration::ZERO; RENDER_SAMPLES_CAPACITY];
+        if let Some(src_slice) = self.render_durations.get(..count) {
+            for (dst, src) in sorted.iter_mut().take(count).zip(src_slice) {
+                *dst = *src;
+            }
+        }
+        if let Some(active_slice) = sorted.get_mut(..count) {
+            active_slice.sort_unstable();
+            let p99_idx = count.saturating_sub(1);
+            active_slice.get(p99_idx).copied().unwrap_or(Duration::ZERO)
+        } else {
+            Duration::ZERO
         }
     }
 
@@ -334,5 +395,51 @@ mod tests {
         }
 
         assert_eq!(clock.moving_max_render_duration(), Duration::from_millis(4));
+    }
+
+    #[test]
+    fn test_missed_vblanks_detection() {
+        let mut clock = FrameClock::new(60_000); // 16.666 ms nominal
+        let t0 = Instant::now();
+
+        clock.schedule_frame();
+        clock.on_render_begin(t0).unwrap();
+        clock
+            .on_render_submitted(t0 + Duration::from_millis(2))
+            .unwrap();
+        clock.on_vblank(t0 + Duration::from_millis(16)).unwrap();
+        assert_eq!(clock.missed_vblanks(), 0);
+
+        // Frame 2: delayed vblank arriving after ~50ms (missed 2 vblanks)
+        clock.schedule_frame();
+        clock
+            .on_render_begin(t0 + Duration::from_millis(20))
+            .unwrap();
+        clock
+            .on_render_submitted(t0 + Duration::from_millis(22))
+            .unwrap();
+        clock.on_vblank(t0 + Duration::from_millis(66)).unwrap();
+        assert_eq!(clock.missed_vblanks(), 2);
+    }
+
+    #[test]
+    fn test_percentile_and_last_render_duration() {
+        let mut clock = FrameClock::new(60_000);
+        let t0 = Instant::now();
+
+        assert_eq!(clock.last_render_duration(), Duration::ZERO);
+        assert_eq!(clock.p99_render_duration(), Duration::ZERO);
+
+        for ms in [1, 5, 2, 8, 3] {
+            clock.schedule_frame();
+            clock.on_render_begin(t0).unwrap();
+            clock
+                .on_render_submitted(t0 + Duration::from_millis(ms))
+                .unwrap();
+            clock.on_vblank(t0 + Duration::from_millis(16)).unwrap();
+        }
+
+        assert_eq!(clock.last_render_duration(), Duration::from_millis(3));
+        assert_eq!(clock.p99_render_duration(), Duration::from_millis(8));
     }
 }

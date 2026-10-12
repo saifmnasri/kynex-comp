@@ -4,7 +4,7 @@
 //! DRM output modesetting pipeline and multi-monitor KMS display initialization.
 
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::GbmAllocator;
@@ -178,6 +178,12 @@ impl DrmOutputPipeline {
         if let Err(err) = entry.clock.on_vblank(now) {
             tracing::trace!(%err, ?crtc, "Frame clock vblank notification");
         }
+        tracing::trace!(
+            ?crtc,
+            frame_count = entry.clock.frame_count(),
+            missed_vblanks = entry.clock.missed_vblanks(),
+            "DRM vblank presented"
+        );
         Some(entry)
     }
 
@@ -236,7 +242,33 @@ impl DrmOutputPipeline {
             tracing::trace!(%err, ?crtc, "Frame clock render submitted notification");
         }
 
+        Self::log_frame_timing(
+            crtc,
+            submitted_now.saturating_duration_since(now),
+            &entry.clock,
+        );
+
         Ok(())
+    }
+
+    fn log_frame_timing(
+        crtc: crtc::Handle,
+        render_duration: Duration,
+        clock: &crate::frame_clock::FrameClock,
+    ) {
+        tracing::trace!(
+            ?crtc,
+            duration_us = render_duration.as_micros(),
+            p99_us = clock.p99_render_duration().as_micros(),
+            "DRM frame submitted to hardware"
+        );
+        if render_duration > Duration::from_millis(4) {
+            tracing::debug!(
+                ?crtc,
+                duration_us = render_duration.as_micros(),
+                "Frame render CPU duration exceeded 4ms budget"
+            );
+        }
     }
 
     /// Renders a solid background frame to all active outputs.

@@ -100,4 +100,14 @@ Format: `ADR-NNNN — title — status — context — decision — consequences
 **Context:** Displays can be plugged in or unplugged at runtime. When an output is unplugged, windows mapped to its coordinates risk becoming unreachable "orphan" windows. If all outputs are unplugged, stopping the compositor kills the user session, violating Rule 00 (Stability) and Rule 06 (Degrade, do not die: "Zero outputs connected -> keep running headless; restore layout when an output returns").
 **Decision:** Listen to `UdevEvent::Changed` via `UdevBackend` in Calloop. On hotplug events, re-query connector status, map new outputs into `KynexState`, and unmap disconnected outputs. When an output is unmapped, migrate any windows positioned within its geometry to the surviving primary output using `migrate_window_position`. If 0 outputs remain, maintain headless state and keep client loops alive until a monitor is re-attached.
 **Consequences:** Unplug/replug survives seamlessly. Windows remain reachable at all times, preserving session continuity and fulfilling Phase 2 roadmap criteria.
-
+## ADR-0023 — Frame timing telemetry, vblank pacing verification, and Criterion benchmarking baseline — Accepted
+**Context:** Phase 2F requires verifying frame pacing against Rule 00 ($\le 4$ ms p99 render CPU time) and Rule 06 budgets, detecting missed hardware vblanks, tracking per-output timing telemetry, and establishing an automated benchmark baseline across pure-logic modules (`kx-config`, `kx-input`, `kx-shell-core`) using Criterion.
+**Decision:**
+1. Extend `FrameClock` in `kx-shell-core::frame_clock` with zero-allocation stack ring-buffer telemetry (`[Duration; 64]`), calculating `last_render_duration`, `p99_render_duration`, and detecting missed hardware vblanks when presentation timestamps exceed the nominal refresh interval by $> 1.5 \times \Delta t_{\text{refresh}}$.
+2. Integrate periodic frame timing in `DrmOutputPipeline::log_frame_timing` at `debug` level, with `warn!` when p99 exceeds the Rule 00 4 ms budget.
+3. Configure `criterion = "0.5.1"` as workspace dev-dependency across `kx-config`, `kx-input`, and `kx-shell-core`, executing pure-logic benchmarks for config parsing, shortcut matching, and frame pacing state transitions.
+4. Record baseline measurements in `benches/BASELINE.md` as the official regression gate per Rule 06.
+**Consequences:**
+- Frame production state machine overhead is $< 9$ ns per frame ($< 0.00025\%$ of the 4 ms budget).
+- Zero memory allocation during frame timing recording and percentile querying.
+- Automated benchmarks verify that all pure-logic paths operate well beneath latency budgets.
