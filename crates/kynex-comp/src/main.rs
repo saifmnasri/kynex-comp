@@ -84,12 +84,68 @@ pub fn prepare_child_command(cmd: &mut std::process::Command) {
     cmd.env_remove("KYNEX_FAULT");
 }
 
+fn print_version() {
+    #[cfg(feature = "fault-injection")]
+    tracing::info!("kynex-comp {}+fault-injection", env!("CARGO_PKG_VERSION"));
+    #[cfg(not(feature = "fault-injection"))]
+    tracing::info!("kynex-comp {}", env!("CARGO_PKG_VERSION"));
+}
+
+fn parse_option(
+    arg: &str,
+    args: &[String],
+    idx: &mut usize,
+    cli: &mut CliArgs,
+) -> Result<(), String> {
+    match arg {
+        "--backend" => {
+            *idx = idx.saturating_add(1);
+            let val = args
+                .get(*idx)
+                .ok_or_else(|| String::from("missing argument to --backend"))?;
+            cli.backend.clone_from(val);
+        }
+        "--config" => {
+            *idx = idx.saturating_add(1);
+            let val = args
+                .get(*idx)
+                .ok_or_else(|| String::from("missing argument to --config"))?;
+            cli.config_path = Some(PathBuf::from(val));
+        }
+        "--max-frames" => {
+            *idx = idx.saturating_add(1);
+            let val = args
+                .get(*idx)
+                .ok_or_else(|| String::from("missing argument to --max-frames"))?;
+            let frames = val
+                .parse::<u64>()
+                .map_err(|e| format!("invalid number for --max-frames: {e}"))?;
+            cli.max_frames = Some(frames);
+        }
+        "--exit-after" => {
+            *idx = idx.saturating_add(1);
+            let val = args
+                .get(*idx)
+                .ok_or_else(|| String::from("missing argument to --exit-after"))?;
+            let dur = parse_duration(val)?;
+            cli.exit_after = Some(dur);
+        }
+        "--diagnostic" => {
+            cli.diagnostic = true;
+        }
+        other => return Err(format!("unknown argument: {other}")),
+    }
+    Ok(())
+}
+
 fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
-    let mut backend = String::from("winit");
-    let mut config_path = None;
-    let mut max_frames = None;
-    let mut exit_after = None;
-    let mut diagnostic = false;
+    let mut cli = CliArgs {
+        backend: String::from("winit"),
+        config_path: None,
+        max_frames: None,
+        exit_after: None,
+        diagnostic: false,
+    };
     let mut idx = 1;
 
     while idx < args.len() {
@@ -104,69 +160,19 @@ fn parse_args(args: &[String]) -> Result<Option<CliArgs>, String> {
                 return Ok(None);
             }
             "--version" | "-v" => {
-                #[cfg(feature = "fault-injection")]
-                tracing::info!("kynex-comp {}+fault-injection", env!("CARGO_PKG_VERSION"));
-                #[cfg(not(feature = "fault-injection"))]
-                tracing::info!("kynex-comp {}", env!("CARGO_PKG_VERSION"));
+                print_version();
                 return Ok(None);
             }
-            "--backend" => {
-                idx = idx.saturating_add(1);
-                let val = args
-                    .get(idx)
-                    .ok_or_else(|| String::from("missing argument to --backend"))?;
-                backend.clone_from(val);
-            }
-            "--config" => {
-                idx = idx.saturating_add(1);
-                let val = args
-                    .get(idx)
-                    .ok_or_else(|| String::from("missing argument to --config"))?;
-                config_path = Some(PathBuf::from(val));
-            }
-            "--max-frames" => {
-                idx = idx.saturating_add(1);
-                let val = args
-                    .get(idx)
-                    .ok_or_else(|| String::from("missing argument to --max-frames"))?;
-                let frames = val
-                    .parse::<u64>()
-                    .map_err(|e| format!("invalid number for --max-frames: {e}"))?;
-                max_frames = Some(frames);
-            }
-            "--exit-after" => {
-                idx = idx.saturating_add(1);
-                let val = args
-                    .get(idx)
-                    .ok_or_else(|| String::from("missing argument to --exit-after"))?;
-                let dur = parse_duration(val)?;
-                exit_after = Some(dur);
-            }
-            "--diagnostic" => {
-                diagnostic = true;
-            }
-            other => {
-                return Err(format!("unknown argument: {other}"));
-            }
+            _ => parse_option(arg, args, &mut idx, &mut cli)?,
         }
         idx = idx.saturating_add(1);
     }
 
-    Ok(Some(CliArgs {
-        backend,
-        config_path,
-        max_frames,
-        exit_after,
-        diagnostic,
-    }))
+    Ok(Some(cli))
 }
 
-fn run() -> anyhow::Result<()> {
-    if let Err(err) = kx_common::init_logging() {
-        anyhow::bail!("failed to initialize logging: {err}");
-    }
-
-    let crash_dir = match env::var_os("XDG_STATE_HOME") {
+fn resolve_crash_dir() -> PathBuf {
+    match env::var_os("XDG_STATE_HOME") {
         Some(val) => PathBuf::from(val).join("kynex").join("crash"),
         None => match env::var_os("HOME") {
             Some(val) => PathBuf::from(val)
@@ -176,27 +182,10 @@ fn run() -> anyhow::Result<()> {
                 .join("crash"),
             None => PathBuf::from("/tmp/kynex-crash"),
         },
-    };
+    }
+}
 
-    #[cfg(feature = "fault-injection")]
-    let version_str = concat!(env!("CARGO_PKG_VERSION"), "+fault-injection");
-    #[cfg(not(feature = "fault-injection"))]
-    let version_str = env!("CARGO_PKG_VERSION");
-
-    kx_common::install_panic_hook(crash_dir, version_str);
-
-    let raw_args: Vec<String> = env::args().collect();
-    let parsed = match parse_args(&raw_args) {
-        Ok(Some(args)) => args,
-        Ok(None) => return Ok(()),
-        Err(err) => {
-            tracing::error!("{err}");
-            anyhow::bail!("{err}");
-        }
-    };
-
-    tracing::info!(backend = %parsed.backend, "Starting KynexComp");
-
+fn dispatch_backend(parsed: &CliArgs) -> anyhow::Result<()> {
     if parsed.backend == "winit" || parsed.backend == "nested" {
         let options = kx_shell_core::NestedOptions {
             config: kx_shell_core::NestedConfig::default(),
@@ -222,8 +211,35 @@ fn run() -> anyhow::Result<()> {
             parsed.backend
         );
     }
-
     Ok(())
+}
+
+fn run() -> anyhow::Result<()> {
+    if let Err(err) = kx_common::init_logging() {
+        anyhow::bail!("failed to initialize logging: {err}");
+    }
+
+    let crash_dir = resolve_crash_dir();
+
+    #[cfg(feature = "fault-injection")]
+    let version_str = concat!(env!("CARGO_PKG_VERSION"), "+fault-injection");
+    #[cfg(not(feature = "fault-injection"))]
+    let version_str = env!("CARGO_PKG_VERSION");
+
+    kx_common::install_panic_hook(crash_dir, version_str);
+
+    let raw_args: Vec<String> = env::args().collect();
+    let parsed = match parse_args(&raw_args) {
+        Ok(Some(args)) => args,
+        Ok(None) => return Ok(()),
+        Err(err) => {
+            tracing::error!("{err}");
+            anyhow::bail!("{err}");
+        }
+    };
+
+    tracing::info!(backend = %parsed.backend, "Starting KynexComp");
+    dispatch_backend(&parsed)
 }
 
 fn main() -> anyhow::Result<()> {

@@ -2,8 +2,8 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 2 — Real Hardware Backend (DRM/KMS) — COMPLETE (Closing Gate Passed)
-**Last updated:** 2026-10-12 — Phase 2 complete on branch `feat/phase-2f-performance-closure`. Milestone 2F complete: Frame timing telemetry and monotonic vblank pacing verified against Rule 00 budget (p99 CPU time $\le 4$ ms), hardware missed vblank detection, Criterion benchmarks added for pure-logic crates (`kx-config`, `kx-input`, `kx-shell-core`), baseline recorded in `benches/BASELINE.md` per Rule 06, and ADR-0023 documented. All Phase 2 exit criteria passed. `just check` green (fmt, clippy `-D warnings`, 58 tests, cargo-deny), `cargo test --workspace --features fault-injection --locked` green, `cargo check --release` green.
+**Current phase:** 2 — Real Hardware Backend (DRM/KMS) — CLOSED (Merged into main, tagged `phase-2-complete`)
+**Last updated:** 2026-10-12 — Phase 2 audit closure complete. All Critical and High audit findings resolved. Code hygiene verified across entire workspace (0 files > 500 lines, 0 production functions > 60 lines). Nested backend refactored into `crates/kx-shell-core/src/nested/`. Full verification gate passed: `just check` green (fmt, clippy `-D warnings`, nextest, cargo-deny), `cargo test --workspace --features fault-injection --locked` green, `cargo check --release` green. Phase 2 merged into `dev` and `main`, tagged `phase-2-complete`.
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -20,7 +20,7 @@
   - **Milestone 1F (Hostile Clients & Anti-DoS):** Strict per-client surface quota enforcement with protocol error 2 (`wl_display::Error::NoMemory`) and client disconnect, automatic quota reclamation on surface destroy, hostile client integration suite (quota exhaustion, churn connect/disconnect drop, unconfigured commits), live nested run verified in Fedora ARM64 UTM GNOME Wayland session (`target/debug/kynex-comp --backend nested --max-frames 10`).
 - **Post-Phase 1 Fixes:**
   - **Nested Output Orientation (Y-axis Inversion):** Configured `Transform::Flipped180` on the nested Winit output to cancel `GlesRenderer`'s internal `flip180` projection matrix (which assumes DRM hardware scanout), ensuring window contents and input coordinates render 100% right-side up. Verified visually with `weston-terminal`.
-- **Phase 2 (DRM/KMS Real Hardware Backend):**
+- **Phase 2 (DRM/KMS Real Hardware Backend) — CLOSED:**
   - **Milestone 2A (Dependency & Crate Foundations):** Smithay DRM/GBM/libseat/udev/libinput features enabled, `xcursor = "0.3.11"` added, `udev` LGPL-2.1 exception added to `deny.toml` (approved), `kx-input` pure-logic crate created with `BindingMatcher`, `KeyModifiers`, `KeySym`, `CompositorAction`, ADR-0014 through ADR-0019 recorded.
   - **Milestone 2B (Safety Net & Observability Foundation):**
     - Step 2B.1: `kx-input` binding matcher wired into `KynexState` and nested winit event loop with XKB keysym interception via `keyboard.input` filter (resolving winit `+8` scancode offset) supporting `Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, and `Ctrl+Shift+Q` (rollover-safe for MacBook keyboard matrix ghosting).
@@ -42,24 +42,34 @@
     - Step 2D.5: Main DRM execution loop in `kx-shell-core::drm::mod` with Calloop sources for Libinput, DRM page flips, Libseat VT pause/activate, SIGINT/SIGTERM, Wayland listening socket, client event loops, and frame pacing rendering `DEFAULT_BG_COLOR` clear color.
     - Step 2D.6: Systemd `sd_notify` readiness signal dispatched upon first successful page flip submission, and stopping notification on shutdown.
     - Step 2D.7: Live hardware verification passed on TTY3 with DRM modeset, clear color render, `--exit-after 10s` clean timeout shutdown, and device drop.
-    - Verification: `just check` green (fmt, clippy `-D warnings`, 51 unit tests, cargo-deny).
   - **Milestone 2E (Multi-Output, Hardware Cursor Planes & Dynamic Hotplug):**
     - Step 2E.1: Pure-logic horizontal multi-output layout engine and CRTC allocation (`allocate_outputs`, `migrate_window_position`) in `kx-shell-core::drm::layout` with 5 unit tests.
     - Step 2E.2: Multi-output DRM rendering pipeline, per-output state tracking (`DrmOutputEntry`), and `map_output`/`unmap_output` in `kx-shell-core::drm::output`, `state.rs`, and `drm/mod.rs`.
     - Step 2E.3: Dynamic monitor hotplug via `UdevBackend` (`UdevEvent::Changed`), connector status re-probing, window migration from unplugged outputs, and zero-display headless fallback in `kx-shell-core::drm::hotplug`.
     - Step 2E.4: Hardware cursor planes enabled via `FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT` with automatic compositing fallback, Libinput pointer routing (relative, absolute, click-to-focus/raise, scroll axes), and coordinate clamping across the multi-monitor bounding box (`global_bounds()`) with 5 unit tests.
     - Step 2E.5: ADR-0021 and ADR-0022 recorded in `docs/DECISIONS.md`.
-    - Verification: `just check` green (fmt, clippy `-D warnings`, 56 unit tests, cargo-deny).
   - **Milestone 2F (Performance Profiling, VBlank Telemetry & Phase 2 Closure Gate):**
     - Step 2F.1: Monotonic frame pacing telemetry in `kx-shell-core::frame_clock`: zero-allocation circular buffer (`[Duration; 64]`), `last_render_duration()`, `p99_render_duration()`, and missed vblank detection with 8 unit tests.
     - Step 2F.2: Integrated per-output frame timing logging in `DrmOutputPipeline::log_frame_timing` enforcing Rule 00 budget ($\le 4$ ms p99 render CPU time).
     - Step 2F.3: Integrated `criterion = "0.5.1"` benchmarks across `kx-config` (config parsing), `kx-input` (binding lookup), and `kx-shell-core` (frame pacing state cycle).
     - Step 2F.4: Benchmark baseline recorded in `benches/BASELINE.md` per Rule 06 with sub-microsecond and sub-nanosecond timings.
     - Step 2F.5: ADR-0023 recorded in `docs/DECISIONS.md`.
-    - Verification: `just check` green (fmt, clippy `-D warnings`, 58 unit tests, cargo-deny), `cargo test --workspace --features fault-injection --locked` green, `cargo check --release` green.
+  - **Phase 2 Audit & Code Hygiene Refactoring:**
+    - Zero Critical or High audit findings.
+    - Decomposed `crates/kx-shell-core/src/nested.rs` into `nested/mod.rs` and `nested/event.rs`.
+    - Refactored `kynex-comp/src/main.rs` and `kx-shell-core/src/drm/output.rs`.
+    - Strict verification: 0 files > 500 lines, 0 production functions > 60 lines across the workspace.
+
+## Pending-hardware items (Phase 2)
+The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
+1. **Bare-metal multi-monitor output testing:** Verification with physical HDMI / DisplayPort / DisplayPort MST daisy chains on discrete AMD, NVIDIA, and Intel GPUs (in addition to the virtualized DRM connectors verified in UTM/QEMU).
+2. **Hardware direct scanout & overlay plane assignment:** Verification of zero-copy direct scanout and video overlay plane assignments on physical atomic KMS plane hardware controllers.
+3. **Bare-metal ACPI lid & power events:** Physical laptop lid switch state changes and hardware ACPI sleep/suspend/resume power cycle transitions.
+4. **Physical Variable Refresh Rate (VRR / Adaptive-Sync):** Verification of dynamic vblank timing and tearing prevention on physical FreeSync / G-Sync compatible displays.
+5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- None (Phase 2 complete).
+- None (Phase 2 closed, merged into `main`, tagged `phase-2-complete`).
 
 ## Next
 - Phase 3: Window management, workspaces, and floating layout.
