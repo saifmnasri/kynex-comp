@@ -13,11 +13,11 @@ Pin Smithay. Event loop (calloop), Wayland socket, `wl_compositor`, `wl_shm`, `x
 **Exit:** `foot` (or any simple Wayland terminal) and a browser window run nested; protocol tests with a headless
 client pass; a hostile-client test suite exists; no panics under a 10-minute stress script.
 
-## Phase 2 — Real hardware backend
+## Phase 2 — Real hardware backend — COMPLETE
 libseat session, udev, DRM/KMS with plane-aware compositor, GBM/EGL GLES renderer, libinput, VT switching,
-multi-monitor, hotplug, **emergency-exit key first**, systemd notify + watchdog skeleton.
+multi-monitor, hotplug, **emergency-exit key first**, systemd notify + watchdog skeleton, frame telemetry, Criterion baseline.
 **Exit:** boots to a working session on a VM (virtio-gpu) and on one real laptop; unplug/replug monitor survives;
-suspend/resume survives; no root required.
+suspend/resume survives; no root required; Rule 00 budget verified ($\le 4$ ms p99 render CPU time). All exit criteria met.
 
 ## Phase 3 — Window management
 Window abstraction, workspaces, floating layout, focus policy, move/resize, popups and grabs, `xdg-decoration`

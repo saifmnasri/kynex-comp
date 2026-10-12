@@ -20,8 +20,13 @@ tracing.workspace = true
 xcursor.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 wayland-client.workspace = true
 wayland-protocols.workspace = true
+
+[[bench]]
+name = "frame_pacing_bench"
+harness = false
 
 [features]
 fault-injection = []
