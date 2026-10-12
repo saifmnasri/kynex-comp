@@ -3,7 +3,7 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 2 — Real Hardware Backend (DRM/KMS)
-**Last updated:** 2026-10-12 — Phase 2 in progress on branch `feat/phase-2-drm-backend`. Milestone 2D complete: DRM modesetting, GBM buffer allocation, EGL display/context & GLES renderer initialization, solid clear color render loop, calloop event loop wiring, Libinput input integration with emergency exit keys, and sd_notify readiness/stopping signals. `just check` green (fmt, clippy `-D warnings`, 50 tests, cargo-deny).
+**Last updated:** 2026-10-12 — Phase 2 in progress on branch `feat/phase-2e-multi-output-hotplug`. Milestone 2E complete: Multi-output DRM horizontal layout & CRTC allocation engine, per-output frame pacing, dynamic monitor hotplug via UdevBackend with surviving output window migration and headless fallback, hardware cursor planes with compositing fallback, and global desktop Libinput pointer routing with coordinate clamping. `just check` green (fmt, clippy `-D warnings`, 56 tests, cargo-deny).
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -43,13 +43,20 @@
     - Step 2D.6: Systemd `sd_notify` readiness signal dispatched upon first successful page flip submission, and stopping notification on shutdown.
     - Step 2D.7: Live hardware verification passed on TTY3 with DRM modeset, clear color render, `--exit-after 10s` clean timeout shutdown, and device drop.
     - Verification: `just check` green (fmt, clippy `-D warnings`, 51 unit tests, cargo-deny).
+  - **Milestone 2E (Multi-Output, Hardware Cursor Planes & Dynamic Hotplug):**
+    - Step 2E.1: Pure-logic horizontal multi-output layout engine and CRTC allocation (`allocate_outputs`, `migrate_window_position`) in `kx-shell-core::drm::layout` with 5 unit tests.
+    - Step 2E.2: Multi-output DRM rendering pipeline, per-output state tracking (`DrmOutputEntry`), and `map_output`/`unmap_output` in `kx-shell-core::drm::output`, `state.rs`, and `drm/mod.rs`.
+    - Step 2E.3: Dynamic monitor hotplug via `UdevBackend` (`UdevEvent::Changed`), connector status re-probing, window migration from unplugged outputs, and zero-display headless fallback in `kx-shell-core::drm::hotplug`.
+    - Step 2E.4: Hardware cursor planes enabled via `FrameFlags::ALLOW_CURSOR_PLANE_SCANOUT` with automatic compositing fallback, Libinput pointer routing (relative, absolute, click-to-focus/raise, scroll axes), and coordinate clamping across the multi-monitor bounding box (`global_bounds()`) with 5 unit tests.
+    - Step 2E.5: ADR-0021 and ADR-0022 recorded in `docs/DECISIONS.md`.
+    - Verification: `just check` green (fmt, clippy `-D warnings`, 56 unit tests, cargo-deny).
 
 ## In progress
-- Milestone 2E: Multi-output support, hardware cursor planes, and dynamic monitor hotplug handling.
+- Milestone 2F: Performance profiling, vblank pacing verification, and Phase 2 closure gate.
 
 ## Next
-- Milestone 2E: Multi-output support, hardware cursor planes, and dynamic monitor hotplug handling.
 - Milestone 2F: Performance profiling, vblank pacing verification, and Phase 2 closure gate.
+- Phase 3: Window management, workspaces, and floating layout.
 
 ## Verify commands
 - `just check`
@@ -58,3 +65,4 @@
 - `cargo run -p kynex-comp -- --backend drm --diagnostic` (Run manually from TTY3 only)
 - `cargo run -p kynex-comp -- --backend drm --exit-after 5s` (Run manually from TTY3 only)
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`
+
