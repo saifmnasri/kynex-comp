@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Kynex. All rights reserved.
 // Proprietary and confidential. See LICENSE.
 
-//! Nested compositor runner using the Smithay winit backend and Calloop event loop.
+//! Event handling and loop state for the nested compositor backend.
 
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use calloop::generic::Generic;
 use calloop::signals::{Signal, Signals};
-use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
+use calloop::{Interest, LoopHandle, Mode, PostAction};
 use smithay::backend::input::{
     Axis, ButtonState, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent,
     PointerButtonEvent, PointerMotionAbsoluteEvent,
@@ -18,7 +18,7 @@ use smithay::backend::renderer::Color32F;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::backend::winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend, WinitInput};
+use smithay::backend::winit::{WinitEvent, WinitEventLoop, WinitGraphicsBackend, WinitInput};
 use smithay::desktop::WindowSurfaceType;
 use smithay::desktop::space::render_output;
 use smithay::input::keyboard::FilterResult;
@@ -29,65 +29,60 @@ use smithay::wayland::socket::ListeningSocketSource;
 
 use crate::client::ClientState;
 use crate::error::ShellError;
+use crate::nested::NestedOptions;
 use crate::state::KynexState;
 
-/// Default background color (#1a1a24 in sRGB floating-point).
-pub const DEFAULT_BG_COLOR: [f32; 4] = [
-    26.0 / 255.0, // 0.101960785
-    26.0 / 255.0, // 0.101960785
-    36.0 / 255.0, // 0.14117647
-    1.0,
-];
-
-/// Configuration for the nested winit window.
-#[derive(Debug, Clone)]
-pub struct NestedConfig {
-    /// Window title.
-    pub title: String,
-    /// Background clear color [R, G, B, A] normalized to [0.0, 1.0].
-    pub background_color: [f32; 4],
-}
-
-impl Default for NestedConfig {
-    fn default() -> Self {
-        Self {
-            title: "KynexComp (nested)".to_string(),
-            background_color: DEFAULT_BG_COLOR,
-        }
-    }
-}
-
-/// Execution options for the nested compositor loop.
-#[derive(Debug, Clone, Default)]
-pub struct NestedOptions {
-    /// Nested window configuration.
-    pub config: NestedConfig,
-    /// Optional limit on the number of rendered frames before exiting (useful for testing).
-    pub max_frames: Option<u64>,
-    /// Optional time limit before the compositor cleanly terminates.
-    pub exit_after: Option<Duration>,
-}
-
-/// Tracks emergency modifier keys.
 /// Internal loop state passed to event source callbacks.
-struct NestedLoopState {
-    running: bool,
-    backend: WinitGraphicsBackend<GlesRenderer>,
-    damage_tracker: OutputDamageTracker,
-    pointer_location: Point<f64, Logical>,
-    frame_count: u64,
-    max_frames: Option<u64>,
-    exit_after: Option<Duration>,
-    bg_color: Color32F,
-    start_time: Instant,
-    last_error: Option<ShellError>,
-    state: KynexState,
-    display: Display<KynexState>,
+pub(crate) struct NestedLoopState {
+    pub(crate) running: bool,
+    pub(crate) backend: WinitGraphicsBackend<GlesRenderer>,
+    pub(crate) damage_tracker: OutputDamageTracker,
+    pub(crate) pointer_location: Point<f64, Logical>,
+    pub(crate) frame_count: u64,
+    pub(crate) max_frames: Option<u64>,
+    pub(crate) exit_after: Option<Duration>,
+    pub(crate) bg_color: Color32F,
+    pub(crate) start_time: Instant,
+    pub(crate) last_error: Option<ShellError>,
+    pub(crate) state: KynexState,
+    pub(crate) display: Display<KynexState>,
     #[cfg(feature = "fault-injection")]
-    fault_controller: crate::fault::FaultController,
+    pub(crate) fault_controller: crate::fault::FaultController,
 }
 
 impl NestedLoopState {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "nested loop state constructs monolithic runtime bundle from initial backend handles"
+    )]
+    pub(crate) fn new(
+        backend: WinitGraphicsBackend<GlesRenderer>,
+        damage_tracker: OutputDamageTracker,
+        options: &NestedOptions,
+        bg_color: Color32F,
+        start_time: Instant,
+        state: KynexState,
+        display: Display<KynexState>,
+        #[cfg(feature = "fault-injection")] fault_controller: crate::fault::FaultController,
+    ) -> Self {
+        Self {
+            running: true,
+            backend,
+            damage_tracker,
+            pointer_location: Point::from((0.0, 0.0)),
+            frame_count: 0,
+            max_frames: options.max_frames,
+            exit_after: options.exit_after,
+            bg_color,
+            start_time,
+            last_error: None,
+            state,
+            display,
+            #[cfg(feature = "fault-injection")]
+            fault_controller,
+        }
+    }
+
     fn handle_keyboard_event(&mut self, event: &impl KeyboardKeyEvent<WinitInput>) {
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.state.seat.get_keyboard() {
@@ -238,9 +233,7 @@ impl NestedLoopState {
         }
     }
 
-    fn render_frame(&mut self) -> Result<(), ShellError> {
-        self.frame_count = self.frame_count.saturating_add(1);
-
+    fn check_fault_injection(&mut self) -> Result<(), ShellError> {
         #[cfg(feature = "fault-injection")]
         {
             self.fault_controller.check_pre_render(self.frame_count);
@@ -256,6 +249,26 @@ impl NestedLoopState {
                 ));
             }
         }
+        Ok(())
+    }
+
+    fn check_frame_limits(&mut self) {
+        if let Some(max) = self.max_frames {
+            if self.frame_count >= max {
+                tracing::info!(
+                    frames = self.frame_count,
+                    "Reached maximum configured frame count; shutting down"
+                );
+                self.running = false;
+            } else {
+                self.backend.window().request_redraw();
+            }
+        }
+    }
+
+    fn render_frame(&mut self) -> Result<(), ShellError> {
+        self.frame_count = self.frame_count.saturating_add(1);
+        self.check_fault_injection()?;
 
         // Dispatch pending client messages before compositing
         self.display
@@ -291,23 +304,13 @@ impl NestedLoopState {
             .flush_clients()
             .map_err(|e| ShellError::ClientDispatch(e.to_string()))?;
 
-        if let Some(max) = self.max_frames {
-            if self.frame_count >= max {
-                tracing::info!(
-                    frames = self.frame_count,
-                    "Reached maximum configured frame count; shutting down"
-                );
-                self.running = false;
-            } else {
-                self.backend.window().request_redraw();
-            }
-        }
+        self.check_frame_limits();
 
         Ok(())
     }
 }
 
-fn register_event_sources(
+pub(crate) fn register_event_sources(
     loop_handle: &LoopHandle<'_, NestedLoopState>,
     listening_socket: ListeningSocketSource,
     poll_fd: OwnedFd,
@@ -391,169 +394,5 @@ fn handle_winit_event(event: &WinitEvent, loop_state: &mut NestedLoopState) {
             loop_state.handle_pointer_axis(event);
         }
         WinitEvent::Input(_) => {}
-    }
-}
-
-/// Runs the nested compositor with the winit backend.
-///
-/// # Errors
-fn create_display_and_state(
-    backend: &WinitGraphicsBackend<GlesRenderer>,
-) -> Result<
-    (
-        Display<KynexState>,
-        ListeningSocketSource,
-        KynexState,
-        OwnedFd,
-    ),
-    ShellError,
-> {
-    let mut display: Display<KynexState> = Display::new()?;
-    let listening_socket = ListeningSocketSource::new_auto()?;
-    let socket_name = listening_socket
-        .socket_name()
-        .to_string_lossy()
-        .into_owned();
-
-    tracing::info!(socket = %socket_name, "Wayland listening socket bound");
-
-    let state = KynexState::new(&display.handle(), socket_name, backend.window_size())?;
-    let poll_fd = display.backend().poll_fd().try_clone_to_owned()?;
-    Ok((display, listening_socket, state, poll_fd))
-}
-
-fn register_exit_timer(
-    handle: &LoopHandle<'_, NestedLoopState>,
-    duration: Duration,
-) -> Result<(), ShellError> {
-    let timer = calloop::timer::Timer::from_duration(duration);
-    handle
-        .insert_source(timer, |_deadline, (), loop_state| {
-            tracing::info!("Exit-after timeout reached, shutting down");
-            loop_state.running = false;
-            calloop::timer::TimeoutAction::Drop
-        })
-        .map_err(|e| {
-            ShellError::SourceInsertion(format!("Failed to insert exit-after timer: {e}"))
-        })?;
-    Ok(())
-}
-
-fn run_event_loop(
-    event_loop: &mut EventLoop<'_, NestedLoopState>,
-    loop_state: &mut NestedLoopState,
-) -> Result<(), ShellError> {
-    while loop_state.running {
-        if let Some(limit) = loop_state.exit_after {
-            if loop_state.start_time.elapsed() >= limit {
-                tracing::info!("Exit-after duration elapsed, shutting down");
-                loop_state.running = false;
-                break;
-            }
-        }
-        event_loop.dispatch(Some(Duration::from_millis(16)), loop_state)?;
-        if let Err(err) = loop_state.display.flush_clients() {
-            tracing::error!(%err, "Failed to flush Wayland clients");
-        }
-    }
-    Ok(())
-}
-
-/// Runs the nested compositor with the winit backend.
-///
-/// # Errors
-///
-/// Returns a [`ShellError`] if initialization fails or an unrecoverable event loop error occurs.
-pub fn run_nested(options: &NestedOptions) -> Result<(), ShellError> {
-    tracing::info!("Initializing nested winit backend");
-
-    let (backend, winit_event_loop) = winit::init::<GlesRenderer>()?;
-    backend.window().set_title(&options.config.title);
-
-    let [r, g, b, a] = options.config.background_color;
-    let bg_color = Color32F::new(r, g, b, a);
-
-    let (display, listening_socket, state, poll_fd) = create_display_and_state(&backend)?;
-    let damage_tracker = OutputDamageTracker::from_output(&state.output);
-    let start_time = Instant::now();
-
-    #[cfg(feature = "fault-injection")]
-    let fault_controller = crate::fault::FaultController::from_env()
-        .map_err(|e| ShellError::Render(format!("Invalid fault spec: {e}")))?;
-
-    let mut event_loop: EventLoop<'_, NestedLoopState> = EventLoop::try_new()?;
-    register_event_sources(
-        &event_loop.handle(),
-        listening_socket,
-        poll_fd,
-        winit_event_loop,
-    )?;
-
-    let mut loop_state = NestedLoopState {
-        running: true,
-        backend,
-        damage_tracker,
-        pointer_location: Point::from((0.0, 0.0)),
-        frame_count: 0,
-        max_frames: options.max_frames,
-        exit_after: options.exit_after,
-        bg_color,
-        start_time,
-        last_error: None,
-        state,
-        display,
-        #[cfg(feature = "fault-injection")]
-        fault_controller,
-    };
-
-    if let Some(duration) = options.exit_after {
-        register_exit_timer(&event_loop.handle(), duration)?;
-    }
-
-    loop_state.backend.window().request_redraw();
-    if let Err(err) = kx_common::sd_notify(kx_common::notify_state::READY) {
-        tracing::warn!(%err, "Failed to send systemd READY notification");
-    }
-    tracing::info!("Entering nested compositor main event loop");
-
-    run_event_loop(&mut event_loop, &mut loop_state)?;
-
-    if let Err(err) = kx_common::sd_notify(kx_common::notify_state::STOPPING) {
-        tracing::warn!(%err, "Failed to send systemd STOPPING notification");
-    }
-
-    tracing::info!(
-        total_frames = loop_state.frame_count,
-        "Exited nested compositor main event loop cleanly"
-    );
-
-    if let Some(err) = loop_state.last_error {
-        return Err(err);
-    }
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default_nested_config() {
-        let config = NestedConfig::default();
-        assert_eq!(config.title, "KynexComp (nested)");
-        assert!((config.background_color[0] - DEFAULT_BG_COLOR[0]).abs() < f32::EPSILON);
-        assert!((config.background_color[1] - DEFAULT_BG_COLOR[1]).abs() < f32::EPSILON);
-        assert!((config.background_color[2] - DEFAULT_BG_COLOR[2]).abs() < f32::EPSILON);
-        assert!((config.background_color[3] - 1.0).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn test_color_rgb_channels() {
-        // #1a1a24: 0x1a = 26, 0x24 = 36
-        assert_eq!(DEFAULT_BG_COLOR[0], 26.0 / 255.0);
-        assert_eq!(DEFAULT_BG_COLOR[1], 26.0 / 255.0);
-        assert_eq!(DEFAULT_BG_COLOR[2], 36.0 / 255.0);
-        assert_eq!(DEFAULT_BG_COLOR[3], 1.0);
     }
 }

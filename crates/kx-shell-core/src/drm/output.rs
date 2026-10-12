@@ -109,22 +109,7 @@ impl DrmOutputPipeline {
             ));
         }
 
-        let color_formats = [Fourcc::Argb8888, Fourcc::Xrgb8888];
-        let renderer_formats = gpu.renderer.dmabuf_formats();
-
-        let drm_device = gpu.drm_device.take().ok_or_else(|| {
-            ShellError::Output("DRM device has already been initialized".to_string())
-        })?;
-
-        let mut manager = DrmOutputManager::new(
-            drm_device,
-            gpu.allocator.clone(),
-            gpu.exporter.clone(),
-            Some(gpu.gbm.clone()),
-            color_formats,
-            renderer_formats,
-        );
-
+        let mut manager = create_drm_output_manager(gpu)?;
         let [r, g, b, a] = crate::nested::DEFAULT_BG_COLOR;
         let bg_color = Color32F::new(r, g, b, a);
 
@@ -319,6 +304,27 @@ impl DrmOutputPipeline {
 
         smithay::utils::Size::from((max_x, max_y))
     }
+}
+
+fn create_drm_output_manager(
+    gpu: &mut DrmGpuResources,
+) -> Result<PipelineDrmOutputManager, ShellError> {
+    let color_formats = [Fourcc::Argb8888, Fourcc::Xrgb8888];
+    let renderer_formats = gpu.renderer.dmabuf_formats();
+
+    let drm_device = gpu
+        .drm_device
+        .take()
+        .ok_or_else(|| ShellError::Output("DRM device has already been initialized".to_string()))?;
+
+    Ok(DrmOutputManager::new(
+        drm_device,
+        gpu.allocator.clone(),
+        gpu.exporter.clone(),
+        Some(gpu.gbm.clone()),
+        color_formats,
+        renderer_formats,
+    ))
 }
 
 pub(crate) fn initialize_output_entry(
