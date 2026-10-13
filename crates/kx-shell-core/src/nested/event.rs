@@ -177,6 +177,29 @@ impl NestedLoopState {
         let time = event.time_msec();
 
         if state == ButtonState::Pressed {
+            if crate::grab::is_primary_modifier_active(&self.state)
+                && button == crate::grab::BTN_LEFT
+            {
+                if let Some((window, _loc)) = self.state.space.element_under(self.pointer_location)
+                {
+                    let window = window.clone();
+                    self.state.space.raise_element(&window, true);
+                    if let Some(surface) = window.toplevel().map(|t| t.wl_surface().clone()) {
+                        if let Some(&wid) = self.state.surface_to_window_id.get(&surface) {
+                            crate::action::activate_and_focus_window(&mut self.state, wid);
+                            crate::grab::start_compositor_move_grab(
+                                &mut self.state,
+                                wid,
+                                self.pointer_location,
+                                button,
+                                serial,
+                            );
+                            return;
+                        }
+                    }
+                }
+            }
+
             if let Some((window, _loc)) = self.state.space.element_under(self.pointer_location) {
                 let window = window.clone();
                 self.state.space.raise_element(&window, true);

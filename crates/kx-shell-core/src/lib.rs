@@ -11,6 +11,7 @@ pub mod client;
 pub mod drm;
 pub mod error;
 pub mod frame_clock;
+pub mod grab;
 pub mod nested;
 pub mod state;
 pub mod window;
@@ -27,5 +28,9 @@ pub use error::ShellError;
 #[cfg(feature = "fault-injection")]
 pub use fault::{FaultController, FaultError, FaultSpec, MAX_HANG_SECS, MAX_TRIGGER_FRAME};
 pub use frame_clock::{FrameClock, FrameClockError, FrameState, QueueResult};
+pub use grab::{
+    BTN_LEFT, BTN_RIGHT, MoveSurfaceGrab, handle_client_move_request, is_primary_modifier_active,
+    modifiers_to_key_modifiers, start_compositor_move_grab,
+};
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use state::KynexState;

@@ -323,6 +323,10 @@ impl XdgShellHandler for KynexState {
         }
     }
 
+    fn move_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial) {
+        crate::grab::handle_client_move_request(self, &surface, &seat, serial);
+    }
+
     fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
 
     fn reposition_request(
