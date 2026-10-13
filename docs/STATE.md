@@ -97,14 +97,15 @@ The following hardware-dependent verification items are deferred until physical 
   - **Live Real-World Application Validation — DONE:**
     - Integrated `wl_data_device_manager` delegation in `crates/kx-shell-core/src/data_device.rs` (`DataDeviceState`, `DataDeviceHandler`, `SelectionHandler`, `ClientDndGrabHandler`, `ServerDndGrabHandler`) required by modern GTK4/Adwaita applications at display connection time.
     - Verified nested compositor live execution with real desktop apps (`ptyxis`/`weston-terminal`, `gnome-calculator` GTK4, and `firefox`) running simultaneously on `wayland-1`.
-    - Live multi-app session telemetry: 1,447 frames rendered across apps, smooth event dispatch, zero missed vblanks, clean shutdown via emergency exit key combo.
-    - Reverted temporary `Ctrl+Alt+Q` test shortcut, retaining standard emergency shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
+    - Live multi-app session telemetry: 18,389 frames rendered over ~100s across apps (`ptyxis`/`weston-terminal`, `gnome-calculator`, `firefox`), smooth event dispatch, zero missed vblanks or panics, and clean shutdown (exit status 0) triggered via emergency quit shortcut.
+    - Cleaned up temporary test bindings, retaining standard emergency shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
+    - Merged `feat/phase-3-window-management` into `dev` and `main`, pushed to origin.
 
 ## Next
-- Merge `feat/phase-3-window-management` into `dev` and prepare for Phase 4 (Real-App Protocol Completeness).
 - Phase 3 audit and closure gate:
   - Code hygiene review across workspace (verify 0 files > 500 lines, 0 production functions > 60 lines).
   - Security review of client-driven resize/move paths and quota boundaries.
+- Prepare for Phase 4 (Real-App Protocol Completeness).
 
 ## Verify commands
 - `just check`
