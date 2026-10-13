@@ -199,11 +199,18 @@ impl KynexState {
     ) {
         let _global = output.create_global::<Self>(dh);
         self.space.map_output(output, location);
+        self.space.refresh();
     }
 
     /// Unmaps a display output from the compositor's global space.
     pub fn unmap_output(&mut self, output: &Output) {
+        let mut layer_map = smithay::desktop::layer_map_for_output(output);
+        let layers: Vec<_> = layer_map.layers().cloned().collect();
+        for layer in layers {
+            layer_map.unmap_layer(&layer);
+        }
         self.space.unmap_output(output);
+        self.space.refresh();
     }
 
     /// Migrates windows away from an unplugged output so they remain accessible on surviving outputs.
@@ -214,13 +221,18 @@ impl KynexState {
         primary_origin: Point<i32, Logical>,
         primary_size: Size<i32, Logical>,
     ) {
-        let windows: Vec<(Window, Point<i32, Logical>)> = self
-            .space
-            .elements()
-            .filter_map(|w| self.space.element_location(w).map(|loc| (w.clone(), loc)))
+        let windows: Vec<(WindowId, Point<i32, Logical>)> = self
+            .window_map
+            .keys()
+            .copied()
+            .filter_map(|wid| {
+                self.window_manager
+                    .window(wid)
+                    .map(|w| (wid, Point::from((w.geometry.x, w.geometry.y))))
+            })
             .collect();
 
-        for (window, loc) in windows {
+        for (wid, loc) in windows {
             let new_loc = crate::drm::layout::migrate_window_position(
                 loc,
                 unplugged_origin,
@@ -229,9 +241,16 @@ impl KynexState {
                 primary_size,
             );
             if new_loc != loc {
-                self.space.map_element(window, new_loc, false);
+                if let Some(win) = self.window_manager.window(wid) {
+                    let mut geom = win.geometry;
+                    geom.x = new_loc.x;
+                    geom.y = new_loc.y;
+                    self.window_manager.set_window_geometry(wid, geom);
+                }
             }
         }
+
+        crate::window::sync_layout_to_space(self);
     }
 }
 
