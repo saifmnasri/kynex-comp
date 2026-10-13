@@ -178,6 +178,25 @@ impl WindowData {
     }
 }
 
+/// Parameters for mapping a new window into [`WindowManager`](crate::manager::WindowManager).
+#[derive(Debug, Clone)]
+pub struct MapWindowParams<'a> {
+    /// Desired initial geometry (x=0, y=0 triggers cascade positioning).
+    pub geometry: WindowGeometry,
+    /// Client-declared size constraints.
+    pub constraints: SizeConstraints,
+    /// Window title string.
+    pub title: &'a str,
+    /// Application identifier.
+    pub app_id: &'a str,
+    /// Target workspace ID (defaults to active workspace if `None`).
+    pub target_workspace: Option<crate::workspace::WorkspaceId>,
+    /// Usable area on the target display.
+    pub usable_area: WindowGeometry,
+    /// Whether configuration allows new windows to steal focus.
+    pub focus_new_windows_cfg: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

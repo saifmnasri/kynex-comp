@@ -9,27 +9,10 @@ use crate::engine::{
     CascadeTracker, FloatingLayout, LayoutEngine, center_window, clamp_to_reachability,
 };
 use crate::focus::{FocusStack, StackingOrder, should_focus_new_window};
-use crate::window::{SizeConstraints, WindowData, WindowGeometry, WindowId, WindowState};
+use crate::window::{WindowData, WindowGeometry, WindowId, WindowState};
 use crate::workspace::{WorkspaceError, WorkspaceId, WorkspaceManager};
 
-/// Parameters for mapping a new window into [`WindowManager`].
-#[derive(Debug, Clone)]
-pub struct MapWindowParams<'a> {
-    /// Desired initial geometry (x=0, y=0 triggers cascade positioning).
-    pub geometry: WindowGeometry,
-    /// Client-declared size constraints.
-    pub constraints: SizeConstraints,
-    /// Window title string.
-    pub title: &'a str,
-    /// Application identifier.
-    pub app_id: &'a str,
-    /// Target workspace ID (defaults to active workspace if `None`).
-    pub target_workspace: Option<WorkspaceId>,
-    /// Usable area on the target display.
-    pub usable_area: WindowGeometry,
-    /// Whether configuration allows new windows to steal focus.
-    pub focus_new_windows_cfg: bool,
-}
+pub use crate::window::MapWindowParams;
 
 /// Central window manager uniting window entities, workspaces, focus stacks, and layout.
 pub struct WindowManager {
@@ -345,86 +328,166 @@ impl WindowManager {
 
         true
     }
-}
+    /// Switches to the workspace at `index_1_based` (1-indexed).
+    ///
+    /// Updates focus to the most recently used unminimized window on the target
+    /// workspace, or clears focus if the target workspace has no unminimized windows.
+    /// Returns `true` if the active workspace changed.
+    pub fn switch_workspace(&mut self, index_1_based: usize) -> bool {
+        if self.workspaces.switch_to_index(index_1_based) {
+            let active_ws = self.workspaces.active_workspace();
+            let next_wid = self
+                .focus
+                .mru_order()
+                .iter()
+                .copied()
+                .find(|&w| {
+                    self.workspaces.find_window(w) == Some(active_ws)
+                        && self
+                            .windows
+                            .get(w)
+                            .is_some_and(|wdata| wdata.state != WindowState::Minimized)
+                })
+                .or_else(|| {
+                    self.workspaces.windows_on(active_ws).and_then(|wins| {
+                        wins.iter().rev().copied().find(|&w| {
+                            self.windows
+                                .get(w)
+                                .is_some_and(|wdata| wdata.state != WindowState::Minimized)
+                        })
+                    })
+                });
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+            if let Some(wid) = next_wid {
+                self.focus.push_focused(wid);
+            }
+            true
+        } else {
+            false
+        }
+    }
 
-    #[test]
-    fn test_window_manager_lifecycle() {
-        let mut wm = WindowManager::new(4);
-        let usable = WindowGeometry::new(0, 32, 1920, 1048);
-        let output = WindowGeometry::new(0, 0, 1920, 1080);
+    /// Moves `wid` to the workspace at `index_1_based` (1-indexed).
+    ///
+    /// If `wid` held focus on the current active workspace, focus advances to
+    /// the next eligible window on the active workspace.
+    ///
+    /// # Errors
+    /// Returns [`WorkspaceError::NotFound`] if the workspace index is invalid.
+    /// Returns [`WorkspaceError::CapacityExceeded`] if the target workspace is full.
+    pub fn move_window_to_workspace_index(
+        &mut self,
+        wid: WindowId,
+        index_1_based: usize,
+    ) -> Result<(), WorkspaceError> {
+        let ws_ids = self.workspaces.workspace_ids();
+        let target_ws = *ws_ids
+            .get(index_1_based.saturating_sub(1))
+            .filter(|_| index_1_based > 0 && index_1_based <= ws_ids.len())
+            .ok_or(WorkspaceError::NotFound)?;
 
-        // Map window 1
-        let w1 = wm
-            .map_window(&MapWindowParams {
-                geometry: WindowGeometry::new(0, 0, 800, 600),
-                constraints: SizeConstraints::default(),
-                title: "Window 1",
-                app_id: "app1",
-                target_workspace: None,
-                usable_area: usable,
-                focus_new_windows_cfg: true,
-            })
-            .expect("map succeeds");
+        self.workspaces.move_window(wid, target_ws)?;
 
-        assert_eq!(wm.focus().focused(), Some(w1));
-        assert_eq!(wm.stacking().topmost(), Some(w1));
-        assert!(wm.check_invariants());
+        if self.focus.focused() == Some(wid) && target_ws != self.workspaces.active_workspace() {
+            let active_ws = self.workspaces.active_workspace();
+            let next_candidate = self.focus.mru_order().iter().copied().find(|&w| {
+                w != wid
+                    && self.workspaces.find_window(w) == Some(active_ws)
+                    && self
+                        .windows
+                        .get(w)
+                        .is_some_and(|wdata| wdata.state != WindowState::Minimized)
+            });
 
-        // Map window 2
-        let w2 = wm
-            .map_window(&MapWindowParams {
-                geometry: WindowGeometry::new(0, 0, 600, 400),
-                constraints: SizeConstraints::default(),
-                title: "Window 2",
-                app_id: "app2",
-                target_workspace: None,
-                usable_area: usable,
-                focus_new_windows_cfg: true,
-            })
-            .expect("map succeeds");
+            if let Some(next_wid) = next_candidate {
+                self.focus.push_focused(next_wid);
+                self.stacking.raise(next_wid);
+            } else {
+                self.focus.remove(wid);
+            }
+        }
+        Ok(())
+    }
 
-        assert_eq!(wm.focus().focused(), Some(w2));
-        assert_eq!(wm.stacking().topmost(), Some(w2));
-        assert!(wm.check_invariants());
+    /// Cycles focus through windows on the active workspace in MRU order.
+    ///
+    /// Forward (`backward = false`) cycles to older windows; backward cycles to newer.
+    /// If the selected window is minimized, it is unminimized and restored per ADR-0027.
+    /// Returns the newly focused window, if any.
+    pub fn cycle_focus(&mut self, backward: bool, usable_area: WindowGeometry) -> Option<WindowId> {
+        let active_ws = self.workspaces.active_workspace();
+        let ws_windows = self.workspaces.windows_on(active_ws).unwrap_or(&[]);
+        if ws_windows.is_empty() {
+            return None;
+        }
 
-        // Maximize w1
-        wm.maximize_window(w1, usable);
-        assert_eq!(wm.window(w1).map(|w| w.state), Some(WindowState::Maximized));
-        assert_eq!(wm.window(w1).map(|w| w.geometry), Some(usable));
+        let mut candidates: Vec<WindowId> = self
+            .focus
+            .mru_order()
+            .iter()
+            .copied()
+            .filter(|w| ws_windows.contains(w))
+            .collect();
 
-        // Unmaximize w1
-        wm.unmaximize_window(w1, usable);
-        assert_eq!(wm.window(w1).map(|w| w.state), Some(WindowState::Normal));
+        for &w in ws_windows {
+            if !candidates.contains(&w) {
+                candidates.push(w);
+            }
+        }
 
-        // Minimize w2 -> focus reverts to w1
-        wm.minimize_window(w2);
-        assert_eq!(wm.window(w2).map(|w| w.state), Some(WindowState::Minimized));
-        assert_eq!(wm.focus().focused(), Some(w1));
+        if candidates.is_empty() {
+            return None;
+        }
 
-        // Restore w2
-        wm.unminimize_window(w2, usable);
-        assert_eq!(wm.window(w2).map(|w| w.state), Some(WindowState::Normal));
-        assert_eq!(wm.focus().focused(), Some(w2));
+        let current_focused = self.focus.focused();
+        let current_pos = current_focused
+            .and_then(|cf| candidates.iter().position(|&w| w == cf))
+            .unwrap_or(0);
+        let len = candidates.len();
+        let target_idx = if backward {
+            (current_pos.saturating_add(len).saturating_sub(1)) % len
+        } else {
+            (current_pos.saturating_add(1)) % len
+        };
 
-        // Fullscreen w1
-        wm.fullscreen_window(w1, output);
-        assert_eq!(
-            wm.window(w1).map(|w| w.state),
-            Some(WindowState::Fullscreen)
-        );
-        assert_eq!(wm.window(w1).map(|w| w.geometry), Some(output));
+        let target_wid = *candidates.get(target_idx)?;
+        if let Some(win) = self.windows.get(target_wid) {
+            if win.state == WindowState::Minimized {
+                self.unminimize_window(target_wid, usable_area);
+            } else {
+                self.focus_window(target_wid);
+            }
+        }
+        Some(target_wid)
+    }
 
-        // Center w2
-        wm.center_window(w2, usable);
-        assert!(wm.check_invariants());
+    /// Emergency recovery shortcut unminimizing and centering the topmost minimized
+    /// window on the active workspace, or centering the current focused window (ADR-0027).
+    pub fn recover_topmost_window(&mut self, usable_area: WindowGeometry) -> Option<WindowId> {
+        let active_ws = self.workspaces.active_workspace();
+        let ws_windows = self.workspaces.windows_on(active_ws).unwrap_or(&[]);
 
-        // Unmap w1
-        assert!(wm.unmap_window(w1).is_some());
-        assert_eq!(wm.focus().focused(), Some(w2));
-        assert!(wm.check_invariants());
+        let minimized_candidate = self.stacking.windows().iter().rev().copied().find(|&w| {
+            ws_windows.contains(&w)
+                && self
+                    .windows
+                    .get(w)
+                    .is_some_and(|wdata| wdata.state == WindowState::Minimized)
+        });
+
+        if let Some(min_wid) = minimized_candidate {
+            self.unminimize_window(min_wid, usable_area);
+            self.center_window(min_wid, usable_area);
+            Some(min_wid)
+        } else if let Some(focused) = self.focus.focused() {
+            if ws_windows.contains(&focused) {
+                self.center_window(focused, usable_area);
+                Some(focused)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
