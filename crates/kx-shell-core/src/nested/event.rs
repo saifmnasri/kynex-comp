@@ -370,9 +370,17 @@ pub(crate) fn register_event_sources(
             match loop_state
                 .display
                 .handle()
-                .insert_client(stream, client_data)
+                .insert_client(stream, client_data.clone())
             {
-                Ok(client) => tracing::info!(?client, "Accepted new Wayland client connection"),
+                Ok(client) => {
+                    if let Ok(creds) = client.get_credentials(&loop_state.display.handle()) {
+                        client_data.inspect_and_cache_privilege(
+                            &creds,
+                            &loop_state.state.config.privilege.layer_shell_allow,
+                        );
+                    }
+                    tracing::info!(?client, "Accepted new Wayland client connection");
+                }
                 Err(err) => tracing::error!(%err, "Failed to register accepted Wayland client"),
             }
         })

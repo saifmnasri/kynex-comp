@@ -69,6 +69,8 @@ pub struct KynexState {
     pub xdg_decoration_state: XdgDecorationState,
     /// Current pointer cursor image status (requested by client or compositor).
     pub cursor_status: CursorImageStatus,
+    /// Compositor configuration.
+    pub config: kx_config::Config,
 }
 
 impl KynexState {
@@ -105,6 +107,7 @@ impl KynexState {
         let window_manager = WindowManager::new(DEFAULT_WORKSPACE_COUNT);
         let window_map = HashMap::new();
         let surface_to_window_id = HashMap::new();
+        let config = kx_config::Config::default();
 
         Ok(Self {
             compositor_state,
@@ -123,6 +126,7 @@ impl KynexState {
             data_device_state,
             xdg_decoration_state,
             cursor_status,
+            config,
         })
     }
 
