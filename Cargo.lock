@@ -975,6 +975,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "kx-layout"
+version = "0.0.1"
+dependencies = [
+ "bitflags 2.13.2",
+ "criterion",
+ "kx-common",
+ "proptest",
+ "slotmap",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "kx-shell-core"
 version = "0.0.1"
 dependencies = [
@@ -984,6 +997,7 @@ dependencies = [
  "kx-common",
  "kx-config",
  "kx-input",
+ "kx-layout",
  "slotmap",
  "smithay",
  "thiserror 2.0.21",

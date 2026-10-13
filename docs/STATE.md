@@ -69,16 +69,50 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- None (Phase 2 closed, merged into `main`, tagged `phase-2-complete`).
+- **Phase 3 (Window Management):**
+  - Branch: `feat/phase-3-window-management` (from `dev`).
+  - **Sub-phase 3A (Architecture & ADRs) — DONE:**
+    - Step 3A.1: Architecture decisions ADR-0024 through ADR-0030 recorded in `docs/DECISIONS.md`. Implementation plan approved.
+  - **Sub-phase 3B (Pure-Logic Layout Engine `kx-layout`) — DONE:**
+    - Step 3B.1: Pure-logic crate `kx-layout` scaffold created with strict `#![forbid(unsafe_code)]` and zero panics.
+    - Step 3B.2: Window model types in `crates/kx-layout/src/window.rs` (`WindowId`, `WindowState`, `WindowGeometry`, `SizeConstraints`, safe clamping, safe UTF-8 truncation).
+    - Step 3B.3: Workspace model in `crates/kx-layout/src/workspace.rs` (`Workspace`, `WorkspaceId`, `WorkspaceManager`, anti-DoS bound `MAX_WINDOWS_PER_WORKSPACE = 256`, non-panicking `check_invariants()`).
+    - Step 3B.4: Focus stack and stacking order in `crates/kx-layout/src/focus.rs` (`FocusStack`, `StackingOrder`, `FocusPolicy`, `AltTabSession` with wrap-around, `should_focus_new_window`).
+    - Step 3B.5: Floating layout engine in `crates/kx-layout/src/engine.rs` (`FloatingLayout`, `CascadeTracker`, `ExclusiveMargins`, `clamp_to_reachability`, `center_window`).
+    - Step 3B.6: Authoritative `WindowManager` coordinator in `crates/kx-layout/src/manager.rs` uniting window entities, workspaces, focus stacks, stacking order, and layout engines with `MapWindowParams` and invariant verification.
+    - Step 3B.7: Property tests in `crates/kx-layout/tests/layout_properties.rs` with `proptest` verifying reachability clamping guarantees, exclusive margins math, size constraints clamping, and WindowManager invariant preservation.
+    - Step 3B.8: Structured byte-driven layout fuzz target harness in `fuzz/fuzz_targets/layout_ops.rs` and byte fuzz test in `layout_properties.rs`.
+  - **Sub-phase 3C (XDG Toplevel Lifecycle in `kx-shell-core`) — DONE:**
+    - Step 3C.1: Added `kx-layout` dependency and integrated authoritative `WindowManager`, `window_map: HashMap<WindowId, WindowElement>`, and `surface_to_window_id: HashMap<WlSurface, WindowId>` into `KynexState`.
+    - Step 3C.2: Implemented `sync_layout_to_space` synchronizing `WindowManager` positions/stacking into Smithay's `Space`, plus `map_new_toplevel` and `unmap_toplevel` in `crates/kx-shell-core/src/window.rs`.
+    - Step 3C.3: Handled `xdg_toplevel` protocol requests: `set_maximized`, `unset_maximized`, `set_fullscreen`, `unset_fullscreen`, `set_minimized`, `ack_configure`, app_id and title changes, and buffer commit size synchronisation.
+    - Step 3C.4: Integration test suite in `crates/kx-shell-core/tests/xdg_shell_client.rs` with wayland-client verifying toplevel lifecycle, state requests, and minimize/unminimize without panics.
+  - **Sub-phase 3D (Interactive Move/Resize, Keybindings, and Workspaces) — DONE:**
+    - Step 3D.1: Configurable primary modifier (`primary_modifier = "Alt"` or `"Logo"`) in `kx-config` and `kx-input` with collision avoidance.
+    - Step 3D.2: Atomic hot-reload safety with fallback in `kx-config`.
+    - Step 3D.3: Keybinding action dispatch in nested and DRM event loops: close window, toggle maximize/fullscreen, switch workspace, move window to workspace.
+    - Step 3D.4: Interactive move grab: serial validation, `MoveSurfaceGrab`, reachability clamping, `set_window_geometry` on `WindowManager`.
+    - Step 3D.5: Interactive resize grab: edge detection (`detect_resize_edge`), `ResizeSurfaceGrab`, arithmetic math (`calculate_resize_geometry`), min/max size constraints clamping, integration with `nested/event.rs`, `drm/input.rs`, `state.rs` (`resize_request`). Modular grab architecture (`grab/mod.rs`, `grab/move_grab.rs`, `grab/resize_grab.rs`, `grab/resize_math.rs`).
+    - Step 3D.6: Workspace switching integration (`sync_layout_to_space` maps active workspace windows to space and unmaps inactive ones) + comprehensive integration tests in `crates/kx-shell-core/tests/interactive_grab.rs` (5 test scenarios covering move, resize, invalid client serial rejection, and modifier checks) and `crates/kx-shell-core/tests/xdg_shell_client.rs` (multi-window mapping, workspace isolation, moving windows across workspaces, client destroy lifecycle). ADR-0031 recorded.
+  - **Live Real-World Application Validation — DONE:**
+    - Integrated `wl_data_device_manager` delegation in `crates/kx-shell-core/src/data_device.rs` (`DataDeviceState`, `DataDeviceHandler`, `SelectionHandler`, `ClientDndGrabHandler`, `ServerDndGrabHandler`) required by modern GTK4/Adwaita applications at display connection time.
+    - Verified nested compositor live execution with real desktop apps (`ptyxis`/`weston-terminal`, `gnome-calculator` GTK4, and `firefox`) running simultaneously on `wayland-1`.
+    - Live multi-app session telemetry: 1,447 frames rendered across apps, smooth event dispatch, zero missed vblanks, clean shutdown via emergency exit key combo.
+    - Reverted temporary `Ctrl+Alt+Q` test shortcut, retaining standard emergency shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
 
 ## Next
-- Phase 3: Window management, workspaces, and floating layout.
+- Merge `feat/phase-3-window-management` into `dev` and prepare for Phase 4 (Real-App Protocol Completeness).
+- Phase 3 audit and closure gate:
+  - Code hygiene review across workspace (verify 0 files > 500 lines, 0 production functions > 60 lines).
+  - Security review of client-driven resize/move paths and quota boundaries.
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-layout`
+- `cargo test -p kx-shell-core --test xdg_shell_client`
+- `cargo test -p kx-shell-core --test interactive_grab`
 - `cargo test --workspace --features fault-injection --locked`
 - `cargo check --release`
-- `cargo run -p kynex-comp -- --backend drm --diagnostic` (Run manually from TTY3 only)
-- `cargo run -p kynex-comp -- --backend drm --exit-after 5s` (Run manually from TTY3 only)
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`
+
 

@@ -14,6 +14,6 @@ pub use error::ConfigError;
 pub use load::{MAX_CONFIG_SIZE, SUPPORTED_CONFIG_VERSION, load_from_str};
 pub use types::{
     AppearanceConfig, Config, DEFAULT_LOG_LEVEL, DEFAULT_REPEAT_DELAY_MS, DEFAULT_REPEAT_RATE_HZ,
-    GeneralConfig, InputConfig, MAX_REPEAT_DELAY_MS, MAX_REPEAT_RATE_HZ, MIN_REPEAT_DELAY_MS,
-    MIN_REPEAT_RATE_HZ,
+    GeneralConfig, InputConfig, KeybindingConfig, MAX_REPEAT_DELAY_MS, MAX_REPEAT_RATE_HZ,
+    MIN_REPEAT_DELAY_MS, MIN_REPEAT_RATE_HZ,
 };

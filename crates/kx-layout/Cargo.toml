@@ -1,0 +1,22 @@
+[package]
+name = "kx-layout"
+description = "Pure logic window and workspace layout engines for KynexComp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+kx-common.workspace = true
+slotmap.workspace = true
+bitflags.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+criterion.workspace = true
+
+[lints]
+workspace = true

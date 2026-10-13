@@ -6,16 +6,21 @@
 //! Provides the primary compositor state, output tracking, window management,
 //! rendering loop, and protocol dispatch.
 
+pub mod action;
 pub mod client;
+pub mod data_device;
 pub mod drm;
 pub mod error;
 pub mod frame_clock;
+pub mod grab;
 pub mod nested;
 pub mod state;
+pub mod window;
 
 #[cfg(feature = "fault-injection")]
 pub mod fault;
 
+pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
 pub use client::{ClientLimits, ClientState};
 pub use drm::{
     ConnectorInfo, DrmDeviceInfo, DrmDiagnosticReport, DrmOptions, DrmSession, ModeInfo, run_drm,
@@ -24,5 +29,11 @@ pub use error::ShellError;
 #[cfg(feature = "fault-injection")]
 pub use fault::{FaultController, FaultError, FaultSpec, MAX_HANG_SECS, MAX_TRIGGER_FRAME};
 pub use frame_clock::{FrameClock, FrameClockError, FrameState, QueueResult};
+pub use grab::{
+    BTN_LEFT, BTN_RIGHT, MoveSurfaceGrab, ResizeSurfaceGrab, detect_resize_edge,
+    handle_client_move_request, handle_client_resize_request, is_primary_modifier_active,
+    modifiers_to_key_modifiers, start_compositor_move_grab, start_compositor_resize_grab,
+    try_start_compositor_grab,
+};
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use state::KynexState;

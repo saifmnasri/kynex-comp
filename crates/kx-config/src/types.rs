@@ -44,6 +44,10 @@ pub struct Config {
     /// Appearance and visual preferences.
     #[serde(default)]
     pub appearance: AppearanceConfig,
+
+    /// Keybinding configuration.
+    #[serde(default)]
+    pub keybindings: KeybindingConfig,
 }
 
 impl Default for Config {
@@ -53,8 +57,30 @@ impl Default for Config {
             general: GeneralConfig::default(),
             input: InputConfig::default(),
             appearance: AppearanceConfig::default(),
+            keybindings: KeybindingConfig::default(),
         }
     }
+}
+
+/// Keybinding and modifier configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KeybindingConfig {
+    /// Primary modifier key: "Super" (default for DRM) or "`CtrlAlt`" (dev mode for nested).
+    #[serde(default = "default_primary_mod")]
+    pub primary_mod: String,
+}
+
+impl Default for KeybindingConfig {
+    fn default() -> Self {
+        Self {
+            primary_mod: default_primary_mod(),
+        }
+    }
+}
+
+fn default_primary_mod() -> String {
+    "Super".to_owned()
 }
 
 /// General compositor options.

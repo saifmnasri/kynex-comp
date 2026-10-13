@@ -162,11 +162,17 @@ fn handle_pointer_button(
     let time = event.time_msec();
 
     if button_state == ButtonState::Pressed {
+        if crate::grab::try_start_compositor_grab(state, pointer_location, button, serial) {
+            return;
+        }
+
         if let Some((window, _loc)) = state.space.element_under(pointer_location) {
             let window = window.clone();
             state.space.raise_element(&window, true);
             if let Some(surface) = window.toplevel().map(|t| t.wl_surface().clone()) {
-                if let Some(keyboard) = state.seat.get_keyboard() {
+                if let Some(&wid) = state.surface_to_window_id.get(&surface) {
+                    crate::action::activate_and_focus_window(state, wid);
+                } else if let Some(keyboard) = state.seat.get_keyboard() {
                     keyboard.set_focus(state, Some(surface), serial);
                 }
             }
@@ -260,9 +266,11 @@ fn handle_keyboard_event(
         },
     );
 
-    if let Some(kx_input::CompositorAction::Quit) = action {
-        info!("Emergency exit key combination triggered via Libinput; shutting down");
-        return true;
+    if let Some(action) = action {
+        if crate::action::execute_compositor_action(state, &action) {
+            info!("Compositor shutdown requested via Libinput action");
+            return true;
+        }
     }
 
     false
