@@ -100,6 +100,21 @@ impl PrimaryModifier {
             None
         }
     }
+
+    /// The key modifier combination corresponding to this primary modifier.
+    #[must_use]
+    pub fn modifiers(self) -> KeyModifiers {
+        match self {
+            Self::Super => KeyModifiers::LOGO,
+            Self::CtrlAlt => KeyModifiers::CTRL | KeyModifiers::ALT,
+        }
+    }
+
+    /// Check if this primary modifier is active in the provided modifier set.
+    #[must_use]
+    pub fn is_active(self, mods: KeyModifiers) -> bool {
+        mods.contains(self.modifiers())
+    }
 }
 
 /// A registered keyboard shortcut mapped to an action.
@@ -129,6 +144,7 @@ impl KeyBinding {
 #[derive(Debug, Default, Clone)]
 pub struct BindingMatcher {
     bindings: Vec<KeyBinding>,
+    primary_modifier: PrimaryModifier,
 }
 
 impl BindingMatcher {
@@ -137,6 +153,7 @@ impl BindingMatcher {
     pub const fn new() -> Self {
         Self {
             bindings: Vec::new(),
+            primary_modifier: PrimaryModifier::Super,
         }
     }
 
@@ -144,13 +161,22 @@ impl BindingMatcher {
     /// shortcuts configured for the given primary modifier.
     #[must_use]
     pub fn with_primary_modifier(primary_mod: PrimaryModifier) -> Self {
-        let mut matcher = Self::new();
+        let mut matcher = Self {
+            bindings: Vec::new(),
+            primary_modifier: primary_mod,
+        };
         matcher.add_emergency_bindings();
         match primary_mod {
             PrimaryModifier::Super => matcher.add_standard_bindings(),
             PrimaryModifier::CtrlAlt => matcher.add_dev_bindings(),
         }
         matcher
+    }
+
+    /// Access the primary modifier configured on this matcher.
+    #[must_use]
+    pub const fn primary_modifier(&self) -> PrimaryModifier {
+        self.primary_modifier
     }
 
     /// Create a matcher pre-populated with standard emergency exit and default Super shortcuts.
@@ -439,5 +465,23 @@ mod tests {
             Some(&CompositorAction::CloseWindow)
         );
         assert_eq!(matcher.matches(KeyModifiers::CTRL, KeySym::Q), None);
+    }
+
+    #[test]
+    fn test_primary_modifier_helpers() {
+        let sup = PrimaryModifier::Super;
+        assert_eq!(sup.modifiers(), KeyModifiers::LOGO);
+        assert!(sup.is_active(KeyModifiers::LOGO));
+        assert!(sup.is_active(KeyModifiers::LOGO | KeyModifiers::SHIFT));
+        assert!(!sup.is_active(KeyModifiers::CTRL));
+
+        let ca = PrimaryModifier::CtrlAlt;
+        assert_eq!(ca.modifiers(), KeyModifiers::CTRL | KeyModifiers::ALT);
+        assert!(ca.is_active(KeyModifiers::CTRL | KeyModifiers::ALT));
+        assert!(ca.is_active(KeyModifiers::CTRL | KeyModifiers::ALT | KeyModifiers::SHIFT));
+        assert!(!ca.is_active(KeyModifiers::CTRL));
+
+        let matcher = BindingMatcher::with_primary_modifier(ca);
+        assert_eq!(matcher.primary_modifier(), PrimaryModifier::CtrlAlt);
     }
 }
