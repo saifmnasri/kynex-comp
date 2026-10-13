@@ -22,12 +22,14 @@ use smithay::utils::{Logical, Physical, Point, Serial, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
 use smithay::wayland::output::OutputHandler;
+use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{
-    delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_shell,
+    delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_decoration,
+    delegate_xdg_shell,
 };
 
 use crate::client::ClientState;
@@ -63,6 +65,10 @@ pub struct KynexState {
     pub surface_to_window_id: HashMap<WlSurface, WindowId>,
     /// Data device protocol state (`wl_data_device_manager`).
     pub data_device_state: smithay::wayland::selection::data_device::DataDeviceState,
+    /// Server-side decoration protocol state (`zxdg_decoration_manager_v1`).
+    pub xdg_decoration_state: XdgDecorationState,
+    /// Current pointer cursor image status (requested by client or compositor).
+    pub cursor_status: CursorImageStatus,
 }
 
 impl KynexState {
@@ -89,6 +95,8 @@ impl KynexState {
 
         let data_device_state =
             smithay::wayland::selection::data_device::DataDeviceState::new::<Self>(dh);
+        let xdg_decoration_state = XdgDecorationState::new::<Self>(dh);
+        let cursor_status = CursorImageStatus::default_named();
         let xdg_shell_state = XdgShellState::new::<Self>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
@@ -113,6 +121,8 @@ impl KynexState {
             window_map,
             surface_to_window_id,
             data_device_state,
+            xdg_decoration_state,
+            cursor_status,
         })
     }
 
@@ -298,7 +308,9 @@ impl SeatHandler for KynexState {
 
     fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
 
-    fn cursor_image(&mut self, _seat: &Seat<Self>, _image: CursorImageStatus) {}
+    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
+        self.cursor_status = image;
+    }
 }
 
 impl OutputHandler for KynexState {
@@ -399,102 +411,8 @@ delegate_shm!(KynexState);
 delegate_seat!(KynexState);
 delegate_output!(KynexState);
 delegate_xdg_shell!(KynexState);
+delegate_xdg_decoration!(KynexState);
 
 #[cfg(test)]
-mod tests {
-    use smithay::reexports::wayland_server::Display;
-
-    use super::*;
-
-    #[test]
-    fn test_kynex_state_initialization() {
-        let display: Display<KynexState> = Display::new().unwrap();
-        let state = KynexState::new(
-            &display.handle(),
-            "wayland-test-0".into(),
-            (1280, 720).into(),
-        )
-        .unwrap();
-
-        assert_eq!(state.socket_name, "wayland-test-0");
-        let mode = state.output.current_mode().unwrap();
-        assert_eq!((mode.size, mode.refresh), ((1280, 720).into(), 60_000));
-        assert!(matches!(state.output.current_scale(), Scale::Integer(1)));
-        assert_eq!(state.output.current_transform(), Transform::Flipped180);
-
-        state.update_output_size((1920, 1080).into());
-        assert_eq!(
-            state.output.current_mode().unwrap().size,
-            (1920, 1080).into()
-        );
-    }
-
-    #[test]
-    fn test_binding_matcher_emergency_exit() {
-        let display = Display::<KynexState>::new().unwrap();
-        let state = KynexState::new(
-            &display.handle(),
-            "wayland-test-exit".into(),
-            (800, 600).into(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            state.binding_matcher.matches(
-                kx_input::KeyModifiers::CTRL | kx_input::KeyModifiers::SHIFT,
-                kx_input::KeySym::ESCAPE,
-            ),
-            Some(&kx_input::CompositorAction::Quit)
-        );
-    }
-
-    #[test]
-    fn test_map_unmap_output_and_migrate() {
-        use smithay::output::{PhysicalProperties, Subpixel};
-
-        let display = Display::<KynexState>::new().unwrap();
-        let mut state = KynexState::new(
-            &display.handle(),
-            "wayland-test-multi".into(),
-            (1280, 720).into(),
-        )
-        .unwrap();
-
-        assert_eq!(state.space.outputs().count(), 1);
-
-        let secondary = Output::new(
-            "DRM-2".to_string(),
-            PhysicalProperties {
-                size: (0, 0).into(),
-                subpixel: Subpixel::Unknown,
-                make: "Kynex".into(),
-                model: "HDMI".into(),
-            },
-        );
-        let sec_mode = Mode {
-            size: (1920, 1080).into(),
-            refresh: 60_000,
-        };
-        secondary.set_preferred(sec_mode);
-        secondary.change_current_state(
-            Some(sec_mode),
-            Some(Transform::Normal),
-            Some(Scale::Integer(1)),
-            Some((1280, 0).into()),
-        );
-
-        state.map_output(&display.handle(), &secondary, (1280, 0));
-        assert_eq!(state.space.outputs().count(), 2);
-
-        state.unmap_output(&secondary);
-        assert_eq!(state.space.outputs().count(), 1);
-
-        state.migrate_windows_from_unplugged(
-            (1280, 0).into(),
-            (1920, 1080).into(),
-            (0, 0).into(),
-            (1280, 720).into(),
-        );
-        assert_eq!(state.space.outputs().count(), 1);
-    }
-}
+#[path = "state_tests.rs"]
+mod state_tests;

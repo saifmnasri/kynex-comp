@@ -100,12 +100,21 @@ The following hardware-dependent verification items are deferred until physical 
     - Live multi-app session telemetry: 18,389 frames rendered over ~100s across apps (`ptyxis`/`weston-terminal`, `gnome-calculator`, `firefox`), smooth event dispatch, zero missed vblanks or panics, and clean shutdown (exit status 0) triggered via emergency quit shortcut.
     - Cleaned up temporary test bindings, retaining standard emergency shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
     - Merged `feat/phase-3-window-management` into `dev` and `main`, pushed to origin.
+  - **Window Management UX & Interaction Enhancements — DONE:**
+    - Branch: `feat/window-management-ux-fixes`
+    - Pure-logic window decoration geometry, hit-testing, and border detection in `crates/kx-layout/src/decoration.rs` with 20 unit tests.
+    - Implemented `zxdg_decoration_manager_v1` negotiation (`XdgDecorationHandler`, `XdgDecorationState`) and SolidColor titlebar + control buttons (close, maximize/restore, minimize) rendering in `crates/kx-shell-core/src/decoration.rs`.
+    - Bidirectional resize cursor icons (`NsResize`, `EwResize`, `NwseResize`, `NeswResize`) on 8px window border hover, plus direct left-click border-drag resizing and titlebar dragging.
+    - Vblank-synchronized, damage-driven smooth window dragging natively adapting to display refresh rate via `request_redraw()`.
+    - Maintained code hygiene limits: 0 files > 500 lines, 0 functions > 60 lines, `#![forbid(unsafe_code)]`, and `just check` green.
 
 ## Next
+- Conduct live testing of interactive window management UX fixes (smooth dragging, 8px border cursor change & resizing, titlebar button actions).
 - Phase 3 audit and closure gate:
   - Code hygiene review across workspace (verify 0 files > 500 lines, 0 production functions > 60 lines).
   - Security review of client-driven resize/move paths and quota boundaries.
 - Prepare for Phase 4 (Real-App Protocol Completeness).
+
 
 ## Verify commands
 - `just check`
