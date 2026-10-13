@@ -30,12 +30,40 @@ impl KeySym {
     pub const ESCAPE: Self = Self(0xff1b);
     /// Keysym for the `BackSpace` key (`0xff08`).
     pub const BACKSPACE: Self = Self(0xff08);
+    /// Keysym for the Tab key (`0xff09`).
+    pub const TAB: Self = Self(0xff09);
     /// Keysym for the Return / Enter key (`0xff0d`).
     pub const RETURN: Self = Self(0xff0d);
+    /// Keysym for the F4 function key (`0xffbf`).
+    pub const F4: Self = Self(0xffbf);
     /// Keysym for lowercase 'q' (`0x0071`).
     pub const Q: Self = Self(0x0071);
     /// Keysym for uppercase 'Q' (`0x0051`).
     pub const Q_UPPER: Self = Self(0x0051);
+    /// Keysym for lowercase 'w' (`0x0077`).
+    pub const W: Self = Self(0x0077);
+    /// Keysym for uppercase 'W' (`0x0057`).
+    pub const W_UPPER: Self = Self(0x0057);
+    /// Keysym for lowercase 'f' (`0x0066`).
+    pub const F: Self = Self(0x0066);
+    /// Keysym for uppercase 'F' (`0x0046`).
+    pub const F_UPPER: Self = Self(0x0046);
+    /// Keysym for lowercase 'm' (`0x006d`).
+    pub const M: Self = Self(0x006d);
+    /// Keysym for uppercase 'M' (`0x004d`).
+    pub const M_UPPER: Self = Self(0x004d);
+    /// Keysym for lowercase 'c' (`0x0063`).
+    pub const C: Self = Self(0x0063);
+    /// Keysym for uppercase 'C' (`0x0043`).
+    pub const C_UPPER: Self = Self(0x0043);
+    /// Keysym for digit '1' (`0x0031`).
+    pub const KEY_1: Self = Self(0x0031);
+    /// Keysym for digit '2' (`0x0032`).
+    pub const KEY_2: Self = Self(0x0032);
+    /// Keysym for digit '3' (`0x0033`).
+    pub const KEY_3: Self = Self(0x0033);
+    /// Keysym for digit '4' (`0x0034`).
+    pub const KEY_4: Self = Self(0x0034);
 
     /// Construct a new `KeySym` from a raw numeric value.
     #[must_use]
@@ -47,6 +75,30 @@ impl KeySym {
     #[must_use]
     pub const fn raw(self) -> u32 {
         self.0
+    }
+}
+
+/// Primary modifier key configuration for window management shortcuts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum PrimaryModifier {
+    /// Super / Windows / Command / Logo key (default for DRM mode).
+    #[default]
+    Super,
+    /// Ctrl + Alt combined modifier (dev mode for nested compositor under host desktop).
+    CtrlAlt,
+}
+
+impl PrimaryModifier {
+    /// Parse from a string identifier ("Super" or "`CtrlAlt`", case-insensitive).
+    #[must_use]
+    pub fn from_str_name(name: &str) -> Option<Self> {
+        if name.eq_ignore_ascii_case("super") {
+            Some(Self::Super)
+        } else if name.eq_ignore_ascii_case("ctrlalt") || name.eq_ignore_ascii_case("ctrl_alt") {
+            Some(Self::CtrlAlt)
+        } else {
+            None
+        }
     }
 }
 
@@ -88,40 +140,146 @@ impl BindingMatcher {
         }
     }
 
-    /// Create a matcher pre-populated with standard emergency exit shortcuts:
-    /// - `Ctrl + Shift + Escape` -> `Quit`
-    /// - `Ctrl + Alt + BackSpace` -> `Quit`
+    /// Create a matcher pre-populated with emergency exit shortcuts and window management
+    /// shortcuts configured for the given primary modifier.
+    #[must_use]
+    pub fn with_primary_modifier(primary_mod: PrimaryModifier) -> Self {
+        let mut matcher = Self::new();
+        matcher.add_emergency_bindings();
+        match primary_mod {
+            PrimaryModifier::Super => matcher.add_standard_bindings(),
+            PrimaryModifier::CtrlAlt => matcher.add_dev_bindings(),
+        }
+        matcher
+    }
+
+    /// Create a matcher pre-populated with standard emergency exit and default Super shortcuts.
     #[must_use]
     pub fn with_defaults() -> Self {
-        let mut matcher = Self::new();
+        Self::with_primary_modifier(PrimaryModifier::Super)
+    }
 
-        // Emergency exit 1: Ctrl + Shift + Escape
-        matcher.add_binding(KeyBinding::new(
-            KeyModifiers::CTRL | KeyModifiers::SHIFT,
-            KeySym::ESCAPE,
-            CompositorAction::Quit,
+    fn add_emergency_bindings(&mut self) {
+        let cs = KeyModifiers::CTRL | KeyModifiers::SHIFT;
+        let ca = KeyModifiers::CTRL | KeyModifiers::ALT;
+        let cas = KeyModifiers::CTRL | KeyModifiers::ALT | KeyModifiers::SHIFT;
+
+        let emergency_keys = [
+            (cs, KeySym::ESCAPE),
+            (ca, KeySym::BACKSPACE),
+            (cs, KeySym::Q),
+            (cs, KeySym::Q_UPPER),
+            (cas, KeySym::Q),
+            (cas, KeySym::Q_UPPER),
+        ];
+        for (mods, sym) in emergency_keys {
+            self.add_binding(KeyBinding::new(mods, sym, CompositorAction::Quit));
+        }
+    }
+
+    fn add_standard_bindings(&mut self) {
+        let logo = KeyModifiers::LOGO;
+        let alt = KeyModifiers::ALT;
+
+        self.add_binding(KeyBinding::new(
+            alt,
+            KeySym::TAB,
+            CompositorAction::CycleFocus,
+        ));
+        self.add_binding(KeyBinding::new(
+            alt | KeyModifiers::SHIFT,
+            KeySym::TAB,
+            CompositorAction::CycleFocusBackward,
+        ));
+        self.add_binding(KeyBinding::new(
+            alt,
+            KeySym::F4,
+            CompositorAction::CloseWindow,
         ));
 
-        // Emergency exit 2: Ctrl + Alt + Backspace
-        matcher.add_binding(KeyBinding::new(
-            KeyModifiers::CTRL | KeyModifiers::ALT,
-            KeySym::BACKSPACE,
-            CompositorAction::Quit,
+        let logo_actions = [
+            (KeySym::Q, CompositorAction::CloseWindow),
+            (KeySym::Q_UPPER, CompositorAction::CloseWindow),
+            (KeySym::W, CompositorAction::CloseWindow),
+            (KeySym::W_UPPER, CompositorAction::CloseWindow),
+            (KeySym::F, CompositorAction::ToggleFullscreen),
+            (KeySym::F_UPPER, CompositorAction::ToggleFullscreen),
+            (KeySym::M, CompositorAction::ToggleMaximize),
+            (KeySym::M_UPPER, CompositorAction::ToggleMaximize),
+            (KeySym::C, CompositorAction::RecoverTopmostWindow),
+            (KeySym::C_UPPER, CompositorAction::RecoverTopmostWindow),
+        ];
+        for (sym, action) in logo_actions {
+            self.add_binding(KeyBinding::new(logo, sym, action));
+        }
+
+        let num_keys = [
+            (KeySym::KEY_1, 1),
+            (KeySym::KEY_2, 2),
+            (KeySym::KEY_3, 3),
+            (KeySym::KEY_4, 4),
+        ];
+        for (sym, ws) in num_keys {
+            self.add_binding(KeyBinding::new(
+                logo,
+                sym,
+                CompositorAction::SwitchWorkspace(ws),
+            ));
+            self.add_binding(KeyBinding::new(
+                logo | KeyModifiers::SHIFT,
+                sym,
+                CompositorAction::MoveToWorkspace(ws),
+            ));
+        }
+    }
+
+    fn add_dev_bindings(&mut self) {
+        let ca = KeyModifiers::CTRL | KeyModifiers::ALT;
+        let cas = ca | KeyModifiers::SHIFT;
+
+        self.add_binding(KeyBinding::new(
+            ca,
+            KeySym::TAB,
+            CompositorAction::CycleFocus,
+        ));
+        self.add_binding(KeyBinding::new(
+            cas,
+            KeySym::TAB,
+            CompositorAction::CycleFocusBackward,
         ));
 
-        // Emergency exit 3: Ctrl + Shift + Q (failsafe for keyboard matrix ghosting)
-        matcher.add_binding(KeyBinding::new(
-            KeyModifiers::CTRL | KeyModifiers::SHIFT,
-            KeySym::Q,
-            CompositorAction::Quit,
-        ));
-        matcher.add_binding(KeyBinding::new(
-            KeyModifiers::CTRL | KeyModifiers::SHIFT,
-            KeySym::Q_UPPER,
-            CompositorAction::Quit,
-        ));
+        let ca_actions = [
+            (KeySym::W, CompositorAction::CloseWindow),
+            (KeySym::W_UPPER, CompositorAction::CloseWindow),
+            (KeySym::F, CompositorAction::ToggleFullscreen),
+            (KeySym::F_UPPER, CompositorAction::ToggleFullscreen),
+            (KeySym::M, CompositorAction::ToggleMaximize),
+            (KeySym::M_UPPER, CompositorAction::ToggleMaximize),
+            (KeySym::C, CompositorAction::RecoverTopmostWindow),
+            (KeySym::C_UPPER, CompositorAction::RecoverTopmostWindow),
+        ];
+        for (sym, action) in ca_actions {
+            self.add_binding(KeyBinding::new(ca, sym, action));
+        }
 
-        matcher
+        let num_keys = [
+            (KeySym::KEY_1, 1),
+            (KeySym::KEY_2, 2),
+            (KeySym::KEY_3, 3),
+            (KeySym::KEY_4, 4),
+        ];
+        for (sym, ws) in num_keys {
+            self.add_binding(KeyBinding::new(
+                ca,
+                sym,
+                CompositorAction::SwitchWorkspace(ws),
+            ));
+            self.add_binding(KeyBinding::new(
+                cas,
+                sym,
+                CompositorAction::MoveToWorkspace(ws),
+            ));
+        }
     }
 
     /// Register a new key binding.
@@ -178,10 +336,93 @@ mod tests {
             matcher.is_emergency_exit(KeyModifiers::CTRL | KeyModifiers::ALT, KeySym::BACKSPACE)
         );
 
+        // Ctrl + Alt + Shift + Q -> Quit
+        assert_eq!(
+            matcher.matches(
+                KeyModifiers::CTRL | KeyModifiers::ALT | KeyModifiers::SHIFT,
+                KeySym::Q
+            ),
+            Some(&CompositorAction::Quit)
+        );
+
         // No match for plain Escape
         assert_eq!(matcher.matches(KeyModifiers::empty(), KeySym::ESCAPE), None);
         // No match for Ctrl + Escape
         assert_eq!(matcher.matches(KeyModifiers::CTRL, KeySym::ESCAPE), None);
+    }
+
+    #[test]
+    fn test_standard_wm_bindings() {
+        let matcher = BindingMatcher::with_primary_modifier(PrimaryModifier::Super);
+
+        assert_eq!(
+            matcher.matches(KeyModifiers::ALT, KeySym::TAB),
+            Some(&CompositorAction::CycleFocus)
+        );
+        assert_eq!(
+            matcher.matches(KeyModifiers::ALT | KeyModifiers::SHIFT, KeySym::TAB),
+            Some(&CompositorAction::CycleFocusBackward)
+        );
+        assert_eq!(
+            matcher.matches(KeyModifiers::LOGO, KeySym::M),
+            Some(&CompositorAction::ToggleMaximize)
+        );
+        assert_eq!(
+            matcher.matches(KeyModifiers::LOGO, KeySym::F),
+            Some(&CompositorAction::ToggleFullscreen)
+        );
+        assert_eq!(
+            matcher.matches(KeyModifiers::LOGO, KeySym::C),
+            Some(&CompositorAction::RecoverTopmostWindow)
+        );
+        assert_eq!(
+            matcher.matches(KeyModifiers::LOGO, KeySym::KEY_2),
+            Some(&CompositorAction::SwitchWorkspace(2))
+        );
+        assert_eq!(
+            matcher.matches(KeyModifiers::LOGO | KeyModifiers::SHIFT, KeySym::KEY_3),
+            Some(&CompositorAction::MoveToWorkspace(3))
+        );
+    }
+
+    #[test]
+    fn test_dev_wm_bindings() {
+        let matcher = BindingMatcher::with_primary_modifier(PrimaryModifier::CtrlAlt);
+        let ca = KeyModifiers::CTRL | KeyModifiers::ALT;
+        let cas = KeyModifiers::CTRL | KeyModifiers::ALT | KeyModifiers::SHIFT;
+
+        assert_eq!(
+            matcher.matches(ca, KeySym::TAB),
+            Some(&CompositorAction::CycleFocus)
+        );
+        assert_eq!(
+            matcher.matches(cas, KeySym::TAB),
+            Some(&CompositorAction::CycleFocusBackward)
+        );
+        assert_eq!(
+            matcher.matches(ca, KeySym::W),
+            Some(&CompositorAction::CloseWindow)
+        );
+        assert_eq!(
+            matcher.matches(ca, KeySym::M),
+            Some(&CompositorAction::ToggleMaximize)
+        );
+        assert_eq!(
+            matcher.matches(ca, KeySym::F),
+            Some(&CompositorAction::ToggleFullscreen)
+        );
+        assert_eq!(
+            matcher.matches(ca, KeySym::C),
+            Some(&CompositorAction::RecoverTopmostWindow)
+        );
+        assert_eq!(
+            matcher.matches(ca, KeySym::KEY_1),
+            Some(&CompositorAction::SwitchWorkspace(1))
+        );
+        assert_eq!(
+            matcher.matches(cas, KeySym::KEY_4),
+            Some(&CompositorAction::MoveToWorkspace(4))
+        );
     }
 
     #[test]

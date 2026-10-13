@@ -17,8 +17,18 @@ pub enum CompositorAction {
     MoveToWorkspace(u32),
     /// Toggle fullscreen state on the focused window.
     ToggleFullscreen,
+    /// Toggle maximize state on the focused window.
+    ToggleMaximize,
     /// Request graceful close of the focused window.
     CloseWindow,
+    /// Cycle keyboard focus to the next window in MRU stack.
+    CycleFocus,
+    /// Cycle keyboard focus to the previous window in MRU stack.
+    CycleFocusBackward,
+    /// Minimize the focused window.
+    MinimizeWindow,
+    /// Recover / center topmost window (Super+C / Ctrl+Alt+C).
+    RecoverTopmostWindow,
     /// Custom named action defined in configuration or scripts.
     Custom(String),
 }

@@ -9,4 +9,4 @@ pub mod action;
 pub mod binding;
 
 pub use action::CompositorAction;
-pub use binding::{BindingMatcher, KeyBinding, KeyModifiers, KeySym};
+pub use binding::{BindingMatcher, KeyBinding, KeyModifiers, KeySym, PrimaryModifier};
