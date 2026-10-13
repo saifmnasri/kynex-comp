@@ -96,14 +96,15 @@ The following hardware-dependent verification items are deferred until physical 
     - Step 3D.6: Workspace switching integration (`sync_layout_to_space` maps active workspace windows to space and unmaps inactive ones) + comprehensive integration tests in `crates/kx-shell-core/tests/interactive_grab.rs` (5 test scenarios covering move, resize, invalid client serial rejection, and modifier checks) and `crates/kx-shell-core/tests/xdg_shell_client.rs` (multi-window mapping, workspace isolation, moving windows across workspaces, client destroy lifecycle). ADR-0031 recorded.
   - **Live Real-World Application Validation — DONE:**
     - Integrated `wl_data_device_manager` delegation in `crates/kx-shell-core/src/data_device.rs` (`DataDeviceState`, `DataDeviceHandler`, `SelectionHandler`, `ClientDndGrabHandler`, `ServerDndGrabHandler`) required by modern GTK4/Adwaita applications at display connection time.
-    - Verified nested compositor live execution with real desktop apps (`gnome-calculator` and `firefox`) running simultaneously on `wayland-1`.
-    - Telemetry: 779 frames rendered over 15 seconds, flawless surface creation and buffer commit loops, zero missed vblanks or panics, and clean shutdown.
+    - Verified nested compositor live execution with real desktop apps (`ptyxis`/`weston-terminal`, `gnome-calculator` GTK4, and `firefox`) running simultaneously on `wayland-1`.
+    - Live multi-app session telemetry: 1,447 frames rendered across apps, smooth event dispatch, zero missed vblanks, clean shutdown via emergency exit key combo.
+    - Reverted temporary `Ctrl+Alt+Q` test shortcut, retaining standard emergency shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
 
 ## Next
+- Merge `feat/phase-3-window-management` into `dev` and prepare for Phase 4 (Real-App Protocol Completeness).
 - Phase 3 audit and closure gate:
   - Code hygiene review across workspace (verify 0 files > 500 lines, 0 production functions > 60 lines).
   - Security review of client-driven resize/move paths and quota boundaries.
-  - Prepare for Phase 4 (Real-App Protocol Completeness).
 
 ## Verify commands
 - `just check`
