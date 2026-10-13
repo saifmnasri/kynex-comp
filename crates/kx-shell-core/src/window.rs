@@ -20,13 +20,15 @@ use smithay::wayland::shell::xdg::{
 
 use crate::state::KynexState;
 
-/// Computes the usable logical geometry of the primary display output.
+use smithay::output::Output;
+
+/// Computes the usable logical geometry of the given display output.
 #[must_use]
-pub fn primary_output_usable_geometry(state: &KynexState) -> WindowGeometry {
-    state.space.output_geometry(&state.output).map_or_else(
+pub fn output_usable_geometry(state: &KynexState, output: &Output) -> WindowGeometry {
+    state.space.output_geometry(output).map_or_else(
         || WindowGeometry::new(0, 0, 1280, 720),
         |geo| {
-            let layer_map = layer_map_for_output(&state.output);
+            let layer_map = layer_map_for_output(output);
             let zone = layer_map.non_exclusive_zone();
             if zone.size.w > 0 && zone.size.h > 0 {
                 WindowGeometry::new(
@@ -40,6 +42,12 @@ pub fn primary_output_usable_geometry(state: &KynexState) -> WindowGeometry {
             }
         },
     )
+}
+
+/// Computes the usable logical geometry of the primary display output.
+#[must_use]
+pub fn primary_output_usable_geometry(state: &KynexState) -> WindowGeometry {
+    output_usable_geometry(state, &state.output)
 }
 
 /// Extracts title, app ID, and size constraints from a Smithay [`ToplevelSurface`].
@@ -182,12 +190,50 @@ pub fn unmap_toplevel(state: &mut KynexState, surface: &ToplevelSurface) {
     }
 }
 
+/// Determines the primary [`Output`] for a window based on maximal overlap area.
+#[must_use]
+pub fn primary_output_for_window(state: &KynexState, wid: WindowId) -> Option<Output> {
+    let win_geo = state.window_manager.window(wid)?.geometry;
+
+    let mut best_output = None;
+    let mut max_area: i64 = 0;
+
+    for output in state.space.outputs() {
+        if let Some(out_geo) = state.space.output_geometry(output) {
+            let x1 = win_geo.x.max(out_geo.loc.x);
+            let x2 = win_geo
+                .x
+                .saturating_add(win_geo.width)
+                .min(out_geo.loc.x.saturating_add(out_geo.size.w));
+            let y1 = win_geo.y.max(out_geo.loc.y);
+            let y2 = win_geo
+                .y
+                .saturating_add(win_geo.height)
+                .min(out_geo.loc.y.saturating_add(out_geo.size.h));
+
+            if x2 > x1 && y2 > y1 {
+                let w = i64::from(x2 - x1);
+                let h = i64::from(y2 - y1);
+                let area = w.saturating_mul(h);
+                if area > max_area {
+                    max_area = area;
+                    best_output = Some(output.clone());
+                }
+            }
+        }
+    }
+
+    best_output.or_else(|| Some(state.output.clone()))
+}
+
 /// Handles a client request to maximize the toplevel window.
 pub fn handle_maximize_request(state: &mut KynexState, surface: &ToplevelSurface) {
     let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
         return;
     };
-    let usable_area = primary_output_usable_geometry(state);
+    let target_output =
+        primary_output_for_window(state, wid).unwrap_or_else(|| state.output.clone());
+    let usable_area = output_usable_geometry(state, &target_output);
     state.window_manager.maximize_window(wid, usable_area);
 
     if let Some(win) = state.window_manager.window(wid) {
@@ -206,7 +252,9 @@ pub fn handle_unmaximize_request(state: &mut KynexState, surface: &ToplevelSurfa
     let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
         return;
     };
-    let usable_area = primary_output_usable_geometry(state);
+    let target_output =
+        primary_output_for_window(state, wid).unwrap_or_else(|| state.output.clone());
+    let usable_area = output_usable_geometry(state, &target_output);
     state.window_manager.unmaximize_window(wid, usable_area);
 
     if let Some(win) = state.window_manager.window(wid) {
@@ -224,16 +272,26 @@ pub fn handle_unmaximize_request(state: &mut KynexState, surface: &ToplevelSurfa
 pub fn handle_fullscreen_request(
     state: &mut KynexState,
     surface: &ToplevelSurface,
-    _output: Option<WlOutput>,
+    output: Option<WlOutput>,
 ) {
     let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
         return;
     };
-    let mode_size = state
-        .output
-        .current_mode()
-        .map_or_else(|| (1920, 1080).into(), |m| m.size);
-    let output_geo = WindowGeometry::new(0, 0, mode_size.w, mode_size.h);
+    let target_output = output
+        .as_ref()
+        .and_then(Output::from_resource)
+        .or_else(|| primary_output_for_window(state, wid))
+        .unwrap_or_else(|| state.output.clone());
+
+    let output_geo = state.space.output_geometry(&target_output).map_or_else(
+        || {
+            let mode_size = target_output
+                .current_mode()
+                .map_or_else(|| (1920, 1080).into(), |m| m.size);
+            WindowGeometry::new(0, 0, mode_size.w, mode_size.h)
+        },
+        |geo| WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h),
+    );
     state.window_manager.fullscreen_window(wid, output_geo);
 
     if let Some(win) = state.window_manager.window(wid) {
@@ -241,6 +299,7 @@ pub fn handle_fullscreen_request(
         surface.with_pending_state(|toplevel_state| {
             toplevel_state.states.set(xdg_toplevel::State::Fullscreen);
             toplevel_state.size = Some((geom.width, geom.height).into());
+            toplevel_state.fullscreen_output = output;
         });
         surface.send_configure();
     }
@@ -252,7 +311,9 @@ pub fn handle_unfullscreen_request(state: &mut KynexState, surface: &ToplevelSur
     let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
         return;
     };
-    let usable_area = primary_output_usable_geometry(state);
+    let target_output =
+        primary_output_for_window(state, wid).unwrap_or_else(|| state.output.clone());
+    let usable_area = output_usable_geometry(state, &target_output);
     state.window_manager.unfullscreen_window(wid, usable_area);
 
     if let Some(win) = state.window_manager.window(wid) {
@@ -260,6 +321,7 @@ pub fn handle_unfullscreen_request(state: &mut KynexState, surface: &ToplevelSur
         surface.with_pending_state(|toplevel_state| {
             toplevel_state.states.unset(xdg_toplevel::State::Fullscreen);
             toplevel_state.size = Some((geom.width, geom.height).into());
+            toplevel_state.fullscreen_output = None;
         });
         surface.send_configure();
     }
