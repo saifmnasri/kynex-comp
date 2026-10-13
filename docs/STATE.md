@@ -3,7 +3,7 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 3 — Window Management — IN PROGRESS
-**Last updated:** 2026-10-13 — Phase 3 window management UX enhancements (smooth dragging at native display refresh, 8px bidirectional border resize cursor icons, direct left-click border-drag resizing, and ADR-0026 titlebar buttons) implemented and live-verified with real applications (Terminal, Calculator, Firefox) over 6,667 frames with 0 errors. Merged to dev and main, pushed to origin. Full verification gate passed: `just check` green (fmt, clippy `-D warnings`, nextest 78 tests, cargo-deny), code hygiene verified (0 files > 500 lines, 0 production functions > 60 lines, `#![forbid(unsafe_code)]`).
+**Last updated:** 2026-10-14 — Sub-phase 3G (Output Handling, Fullscreen & Rehoming) completed and verified with `output_handling` integration test suite. Multi-output tracking with saturating overlap arithmetic, output-targeted fullscreen with SSD suppression (ADR-0029), and dynamic output unplug rehoming (ADR-0030) verified. Sub-phase 3H (Hostile Client Suite & Phase 3 Closure Gate) in progress. Full verification gate passed (`just check` green, tests green, cargo-deny green).
 
 
 ## Done
