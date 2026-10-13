@@ -262,6 +262,20 @@ impl CompositorHandler for KynexState {
                 break;
             }
         }
+        if let Some(&wid) = self.surface_to_window_id.get(surface) {
+            if let Some(window) = self.window_map.get(&wid) {
+                if let Some(win_data) = self.window_manager.window_mut(wid) {
+                    if win_data.state == kx_layout::WindowState::Normal {
+                        let geo = window.geometry();
+                        if geo.size.w > 0 && geo.size.h > 0 {
+                            let (cw, ch) = win_data.constraints.constrain(geo.size.w, geo.size.h);
+                            win_data.geometry.width = cw;
+                            win_data.geometry.height = ch;
+                        }
+                    }
+                }
+            }
+        }
         self.space.refresh();
     }
 }
@@ -326,6 +340,42 @@ impl XdgShellHandler for KynexState {
 
     fn popup_destroyed(&mut self, _surface: PopupSurface) {
         self.popups.cleanup();
+    }
+
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_maximize_request(self, &surface);
+    }
+
+    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_unmaximize_request(self, &surface);
+    }
+
+    fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<WlOutput>) {
+        crate::window::handle_fullscreen_request(self, &surface, output);
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_unfullscreen_request(self, &surface);
+    }
+
+    fn minimize_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_minimize_request(self, &surface);
+    }
+
+    fn ack_configure(
+        &mut self,
+        surface: WlSurface,
+        configure: smithay::wayland::shell::xdg::Configure,
+    ) {
+        crate::window::handle_ack_configure(self, &surface, configure);
+    }
+
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_title_changed(self, &surface);
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_app_id_changed(self, &surface);
     }
 }
 

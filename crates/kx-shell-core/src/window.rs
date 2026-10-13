@@ -10,9 +10,13 @@ use kx_layout::{
 };
 use smithay::desktop::Window;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::Point;
 use smithay::wayland::compositor;
-use smithay::wayland::shell::xdg::{SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceData};
+use smithay::wayland::shell::xdg::{
+    Configure, SurfaceCachedState, ToplevelSurface, XdgToplevelSurfaceData,
+};
 
 use crate::state::KynexState;
 
@@ -162,5 +166,152 @@ pub fn unmap_toplevel(state: &mut KynexState, surface: &ToplevelSurface) {
             state.space.unmap_elem(&window);
         }
         sync_layout_to_space(state);
+    }
+}
+
+/// Handles a client request to maximize the toplevel window.
+pub fn handle_maximize_request(state: &mut KynexState, surface: &ToplevelSurface) {
+    let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
+        return;
+    };
+    let usable_area = primary_output_usable_geometry(state);
+    state.window_manager.maximize_window(wid, usable_area);
+
+    if let Some(win) = state.window_manager.window(wid) {
+        let geom = win.geometry;
+        surface.with_pending_state(|toplevel_state| {
+            toplevel_state.states.set(xdg_toplevel::State::Maximized);
+            toplevel_state.size = Some((geom.width, geom.height).into());
+        });
+        surface.send_configure();
+    }
+    sync_layout_to_space(state);
+}
+
+/// Handles a client request to unmaximize the toplevel window.
+pub fn handle_unmaximize_request(state: &mut KynexState, surface: &ToplevelSurface) {
+    let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
+        return;
+    };
+    let usable_area = primary_output_usable_geometry(state);
+    state.window_manager.unmaximize_window(wid, usable_area);
+
+    if let Some(win) = state.window_manager.window(wid) {
+        let geom = win.geometry;
+        surface.with_pending_state(|toplevel_state| {
+            toplevel_state.states.unset(xdg_toplevel::State::Maximized);
+            toplevel_state.size = Some((geom.width, geom.height).into());
+        });
+        surface.send_configure();
+    }
+    sync_layout_to_space(state);
+}
+
+/// Handles a client request to fullscreen the toplevel window.
+pub fn handle_fullscreen_request(
+    state: &mut KynexState,
+    surface: &ToplevelSurface,
+    _output: Option<WlOutput>,
+) {
+    let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
+        return;
+    };
+    let mode_size = state
+        .output
+        .current_mode()
+        .map_or_else(|| (1920, 1080).into(), |m| m.size);
+    let output_geo = WindowGeometry::new(0, 0, mode_size.w, mode_size.h);
+    state.window_manager.fullscreen_window(wid, output_geo);
+
+    if let Some(win) = state.window_manager.window(wid) {
+        let geom = win.geometry;
+        surface.with_pending_state(|toplevel_state| {
+            toplevel_state.states.set(xdg_toplevel::State::Fullscreen);
+            toplevel_state.size = Some((geom.width, geom.height).into());
+        });
+        surface.send_configure();
+    }
+    sync_layout_to_space(state);
+}
+
+/// Handles a client request to unfullscreen the toplevel window.
+pub fn handle_unfullscreen_request(state: &mut KynexState, surface: &ToplevelSurface) {
+    let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
+        return;
+    };
+    let usable_area = primary_output_usable_geometry(state);
+    state.window_manager.unfullscreen_window(wid, usable_area);
+
+    if let Some(win) = state.window_manager.window(wid) {
+        let geom = win.geometry;
+        surface.with_pending_state(|toplevel_state| {
+            toplevel_state.states.unset(xdg_toplevel::State::Fullscreen);
+            toplevel_state.size = Some((geom.width, geom.height).into());
+        });
+        surface.send_configure();
+    }
+    sync_layout_to_space(state);
+}
+
+/// Handles a client request to minimize the toplevel window.
+pub fn handle_minimize_request(state: &mut KynexState, surface: &ToplevelSurface) {
+    let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
+        return;
+    };
+    state.window_manager.minimize_window(wid);
+
+    if let Some(focused_wid) = state.window_manager.focus().focused() {
+        if let Some(next_window) = state.window_map.get(&focused_wid) {
+            if let Some(toplevel) = next_window.toplevel() {
+                if let Some(keyboard) = state.seat.get_keyboard() {
+                    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+                    keyboard.set_focus(state, Some(toplevel.wl_surface().clone()), serial);
+                }
+            }
+        }
+    } else if let Some(keyboard) = state.seat.get_keyboard() {
+        let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+        keyboard.set_focus(state, None, serial);
+    }
+
+    sync_layout_to_space(state);
+}
+
+/// Handles client `xdg_surface.ack_configure`.
+pub fn handle_ack_configure(_state: &mut KynexState, _surface: &WlSurface, _configure: Configure) {
+    // Serials are tracked and validated by Smithay's XdgShellState automatically.
+}
+
+/// Handles client title updates.
+pub fn handle_title_changed(state: &mut KynexState, surface: &ToplevelSurface) {
+    let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
+        return;
+    };
+    let title = compositor::with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok().and_then(|role| role.title.clone()))
+    })
+    .unwrap_or_default();
+    if let Some(win) = state.window_manager.window_mut(wid) {
+        win.set_title(&title);
+    }
+}
+
+/// Handles client app ID updates.
+pub fn handle_app_id_changed(state: &mut KynexState, surface: &ToplevelSurface) {
+    let Some(&wid) = state.surface_to_window_id.get(surface.wl_surface()) else {
+        return;
+    };
+    let app_id = compositor::with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().ok().and_then(|role| role.app_id.clone()))
+    })
+    .unwrap_or_default();
+    if let Some(win) = state.window_manager.window_mut(wid) {
+        win.set_app_id(&app_id);
     }
 }
