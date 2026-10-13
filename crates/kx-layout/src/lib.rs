@@ -7,12 +7,18 @@
 //! or GPU/rendering crates (per Rule 02). All policy decisions, layout computations,
 //! focus stacking, and reachability validation live here for deterministic unit and property testing.
 
+pub mod decoration;
 pub mod engine;
 pub mod focus;
 pub mod manager;
 pub mod window;
 pub mod workspace;
 
+pub use decoration::{
+    BORDER_MARGIN, BUTTON_SIZE, BUTTON_TOP_MARGIN, CLOSE_BUTTON_RIGHT_MARGIN, DecorationGeometry,
+    DecorationHitTest, MAXIMIZE_BUTTON_RIGHT_MARGIN, MINIMIZE_BUTTON_RIGHT_MARGIN, ResizeEdge,
+    TITLEBAR_HEIGHT, colors as decoration_colors, detect_border_edge, hit_test_window,
+};
 pub use engine::{
     CASCADE_OFFSET_STEP, CascadeTracker, ExclusiveMargins, FloatingLayout, LayoutEngine,
     MIN_ONSCREEN_HEIGHT, MIN_ONSCREEN_WIDTH, center_window, clamp_to_reachability,
