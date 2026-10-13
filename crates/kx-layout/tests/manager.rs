@@ -4,7 +4,7 @@
 //! Integration tests for `WindowManager` lifecycle, workspace switching, and focus.
 
 use kx_layout::manager::{MapWindowParams, WindowManager};
-use kx_layout::window::{SizeConstraints, WindowGeometry, WindowState};
+use kx_layout::window::{SizeConstraints, WindowGeometry, WindowId, WindowState};
 use kx_layout::workspace::WorkspaceError;
 
 #[test]
@@ -187,4 +187,28 @@ fn test_focus_cycling_and_recovery() {
     assert_eq!(recovered, Some(w2));
     assert_eq!(wm.window(w2).map(|w| w.state), Some(WindowState::Normal));
     assert_eq!(wm.focus().focused(), Some(w2));
+}
+
+#[test]
+fn test_set_window_geometry() {
+    let mut wm = WindowManager::new(4);
+    let usable = WindowGeometry::new(0, 0, 1920, 1080);
+    let wid = wm
+        .map_window(&MapWindowParams {
+            geometry: WindowGeometry::new(100, 100, 800, 600),
+            constraints: SizeConstraints::default(),
+            title: "Test",
+            app_id: "test",
+            target_workspace: None,
+            usable_area: usable,
+            focus_new_windows_cfg: true,
+        })
+        .expect("map succeeds");
+
+    let new_geo = WindowGeometry::new(250, 300, 800, 600);
+    assert!(wm.set_window_geometry(wid, new_geo));
+    assert_eq!(wm.window(wid).map(|w| w.geometry), Some(new_geo));
+
+    let fake_id: WindowId = slotmap::Key::null();
+    assert!(!wm.set_window_geometry(fake_id, new_geo));
 }

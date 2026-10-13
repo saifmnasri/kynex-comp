@@ -256,6 +256,16 @@ impl WindowManager {
         self.workspaces.move_window(wid, target_ws)
     }
 
+    /// Sets the geometry of `wid` if the window exists.
+    pub fn set_window_geometry(&mut self, wid: WindowId, geometry: WindowGeometry) -> bool {
+        if let Some(win) = self.windows.get_mut(wid) {
+            win.geometry = geometry;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Centers `wid` within the usable area (Super+C recovery shortcut).
     pub fn center_window(&mut self, wid: WindowId, usable_area: WindowGeometry) {
         if let Some(win) = self.windows.get_mut(wid) {
