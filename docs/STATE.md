@@ -82,14 +82,22 @@ The following hardware-dependent verification items are deferred until physical 
     - Step 3B.6: Authoritative `WindowManager` coordinator in `crates/kx-layout/src/manager.rs` uniting window entities, workspaces, focus stacks, stacking order, and layout engines with `MapWindowParams` and invariant verification.
     - Step 3B.7: Property tests in `crates/kx-layout/tests/layout_properties.rs` with `proptest` verifying reachability clamping guarantees, exclusive margins math, size constraints clamping, and WindowManager invariant preservation.
     - Step 3B.8: Structured byte-driven layout fuzz target harness in `fuzz/fuzz_targets/layout_ops.rs` and byte fuzz test in `layout_properties.rs`.
+  - **Sub-phase 3C (XDG Toplevel Lifecycle in `kx-shell-core`) — DONE:**
+    - Step 3C.1: Added `kx-layout` dependency and integrated authoritative `WindowManager`, `window_map: HashMap<WindowId, WindowElement>`, and `surface_to_window_id: HashMap<WlSurface, WindowId>` into `KynexState`.
+    - Step 3C.2: Implemented `sync_layout_to_space` synchronizing `WindowManager` positions/stacking into Smithay's `Space`, plus `map_new_toplevel` and `unmap_toplevel` in `crates/kx-shell-core/src/window.rs`.
+    - Step 3C.3: Handled `xdg_toplevel` protocol requests: `set_maximized`, `unset_maximized`, `set_fullscreen`, `unset_fullscreen`, `set_minimized`, `ack_configure`, app_id and title changes, and buffer commit size synchronisation.
+    - Step 3C.4: Integration test suite in `crates/kx-shell-core/tests/xdg_shell_client.rs` with wayland-client verifying toplevel lifecycle, state requests, and minimize/unminimize without panics.
 
 ## Next
-- Sub-phase 3C: XDG Toplevel Lifecycle in `kx-shell-core` (Step 3C.1: Add `kx-layout` dependency and wire `WindowManager` into `KynexState`).
+- Sub-phase 3D: Server-Side Decorations (`kx-protocols` / `kx-shell-core` / `kx-render`):
+  - Step 3D.1: Title-less SSD colored squares (ADR-0026) drawing buttons as plain colored squares.
+  - Step 3D.2: SSD click hit detection for close, minimize, maximize.
+  - Step 3D.3: `zxdg_decoration_manager_v1` negotiation (prefer SSD).
 
 ## Verify commands
 - `just check`
 - `cargo test -p kx-layout`
-- `cargo test -p kx-layout --test layout_properties`
+- `cargo test -p kx-shell-core --test xdg_shell_client`
 - `cargo test --workspace --features fault-injection --locked`
 - `cargo check --release`
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`
