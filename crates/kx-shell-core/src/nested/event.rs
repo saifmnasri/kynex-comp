@@ -124,9 +124,10 @@ impl NestedLoopState {
                 },
             );
 
-            if let Some(kx_input::CompositorAction::Quit) = action {
-                tracing::info!("Emergency exit key combination triggered; shutting down");
-                self.running = false;
+            if let Some(action) = action {
+                if crate::action::execute_compositor_action(&mut self.state, &action) {
+                    self.running = false;
+                }
             }
         }
     }
@@ -176,11 +177,22 @@ impl NestedLoopState {
         let time = event.time_msec();
 
         if state == ButtonState::Pressed {
+            if crate::grab::try_start_compositor_grab(
+                &mut self.state,
+                self.pointer_location,
+                button,
+                serial,
+            ) {
+                return;
+            }
+
             if let Some((window, _loc)) = self.state.space.element_under(self.pointer_location) {
                 let window = window.clone();
                 self.state.space.raise_element(&window, true);
                 if let Some(surface) = window.toplevel().map(|t| t.wl_surface().clone()) {
-                    if let Some(keyboard) = self.state.seat.get_keyboard() {
+                    if let Some(&wid) = self.state.surface_to_window_id.get(&surface) {
+                        crate::action::activate_and_focus_window(&mut self.state, wid);
+                    } else if let Some(keyboard) = self.state.seat.get_keyboard() {
                         keyboard.set_focus(&mut self.state, Some(surface), serial);
                     }
                 }

@@ -3,15 +3,16 @@
 
 //! Root compositor state and Wayland protocol delegates.
 
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowId, WindowManager};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::desktop::{PopupKind, PopupManager, Space, Window};
 use smithay::input::keyboard::XkbConfig;
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
-use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
@@ -54,6 +55,14 @@ pub struct KynexState {
     pub popups: PopupManager,
     /// Active compositor key binding matcher.
     pub binding_matcher: kx_input::BindingMatcher,
+    /// Authoritative window manager coordinating workspaces, stacking, and layout.
+    pub window_manager: WindowManager,
+    /// Mapping from layout [`WindowId`] to Smithay desktop [`Window`].
+    pub window_map: HashMap<WindowId, Window>,
+    /// Reverse lookup mapping from [`WlSurface`] to layout [`WindowId`].
+    pub surface_to_window_id: HashMap<WlSurface, WindowId>,
+    /// Data device protocol state (`wl_data_device_manager`).
+    pub data_device_state: smithay::wayland::selection::data_device::DataDeviceState,
 }
 
 impl KynexState {
@@ -78,11 +87,16 @@ impl KynexState {
 
         let _global = output.create_global::<Self>(dh);
 
+        let data_device_state =
+            smithay::wayland::selection::data_device::DataDeviceState::new::<Self>(dh);
         let xdg_shell_state = XdgShellState::new::<Self>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
         let popups = PopupManager::default();
         let binding_matcher = kx_input::BindingMatcher::with_defaults();
+        let window_manager = WindowManager::new(DEFAULT_WORKSPACE_COUNT);
+        let window_map = HashMap::new();
+        let surface_to_window_id = HashMap::new();
 
         Ok(Self {
             compositor_state,
@@ -95,6 +109,10 @@ impl KynexState {
             space,
             popups,
             binding_matcher,
+            window_manager,
+            window_map,
+            surface_to_window_id,
+            data_device_state,
         })
     }
 
@@ -125,11 +143,7 @@ impl KynexState {
         output.set_preferred(mode);
         output.change_current_state(
             Some(mode),
-            // The nested winit backend renders into an EGLSurface window rather than
-            // a DRM KMS scanout plane. In Smithay's GlesRenderer, an internal flip180
-            // matrix is applied to compensate for DRM hardware scanout conventions.
-            // Using Transform::Flipped180 cancels this internal flip so that the nested
-            // window displays right-side up.
+            // Flipped180 cancels GlesRenderer's DRM scanout flip so nested EGL window is upright.
             Some(Transform::Flipped180),
             Some(Scale::Integer(1)),
             Some(Point::from((0, 0))),
@@ -249,6 +263,20 @@ impl CompositorHandler for KynexState {
                 break;
             }
         }
+        if let Some(&wid) = self.surface_to_window_id.get(surface) {
+            if let Some(window) = self.window_map.get(&wid) {
+                if let Some(win_data) = self.window_manager.window_mut(wid) {
+                    if win_data.state == kx_layout::WindowState::Normal {
+                        let geo = window.geometry();
+                        if geo.size.w > 0 && geo.size.h > 0 {
+                            let (cw, ch) = win_data.constraints.constrain(geo.size.w, geo.size.h);
+                            win_data.geometry.width = cw;
+                            win_data.geometry.height = ch;
+                        }
+                    }
+                }
+            }
+        }
         self.space.refresh();
     }
 }
@@ -283,17 +311,7 @@ impl XdgShellHandler for KynexState {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Activated);
-        });
-        surface.send_configure();
-        let window = Window::new_wayland_window(surface.clone());
-        self.space.map_element(window, (0, 0), true);
-
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-            keyboard.set_focus(self, Some(surface.wl_surface().clone()), serial);
-        }
+        crate::window::map_new_toplevel(self, &surface);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -304,6 +322,20 @@ impl XdgShellHandler for KynexState {
         if let Err(err) = surface.send_configure() {
             tracing::warn!(?err, "Failed to send initial popup configure");
         }
+    }
+
+    fn move_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial) {
+        crate::grab::handle_client_move_request(self, &surface, &seat, serial);
+    }
+
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        seat: WlSeat,
+        serial: Serial,
+        edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
+    ) {
+        crate::grab::handle_client_resize_request(self, &surface, &seat, serial, edges);
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
@@ -318,24 +350,47 @@ impl XdgShellHandler for KynexState {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            if keyboard.current_focus().as_ref() == Some(surface.wl_surface()) {
-                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                keyboard.set_focus(self, None, serial);
-            }
-        }
-        let window = self
-            .space
-            .elements()
-            .find(|w| w.toplevel() == Some(&surface))
-            .cloned();
-        if let Some(window) = window {
-            self.space.unmap_elem(&window);
-        }
+        crate::window::unmap_toplevel(self, &surface);
     }
 
     fn popup_destroyed(&mut self, _surface: PopupSurface) {
         self.popups.cleanup();
+    }
+
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_maximize_request(self, &surface);
+    }
+
+    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_unmaximize_request(self, &surface);
+    }
+
+    fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<WlOutput>) {
+        crate::window::handle_fullscreen_request(self, &surface, output);
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_unfullscreen_request(self, &surface);
+    }
+
+    fn minimize_request(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_minimize_request(self, &surface);
+    }
+
+    fn ack_configure(
+        &mut self,
+        surface: WlSurface,
+        configure: smithay::wayland::shell::xdg::Configure,
+    ) {
+        crate::window::handle_ack_configure(self, &surface, configure);
+    }
+
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_title_changed(self, &surface);
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        crate::window::handle_app_id_changed(self, &surface);
     }
 }
 
@@ -354,29 +409,24 @@ mod tests {
     #[test]
     fn test_kynex_state_initialization() {
         let display: Display<KynexState> = Display::new().unwrap();
-        let initial_size = Size::from((1280, 720));
         let state = KynexState::new(
             &display.handle(),
-            "wayland-test-0".to_string(),
-            initial_size,
+            "wayland-test-0".into(),
+            (1280, 720).into(),
         )
         .unwrap();
 
         assert_eq!(state.socket_name, "wayland-test-0");
-        let current_mode = state.output.current_mode().unwrap();
-        assert_eq!(current_mode.size, initial_size);
-        assert_eq!(current_mode.refresh, 60_000);
+        let mode = state.output.current_mode().unwrap();
+        assert_eq!((mode.size, mode.refresh), ((1280, 720).into(), 60_000));
         assert!(matches!(state.output.current_scale(), Scale::Integer(1)));
-        assert_eq!(
-            state.output.current_transform(),
-            Transform::Flipped180,
-            "Nested output must be Flipped180 to cancel GlesRenderer OpenGL scanout inversion"
-        );
+        assert_eq!(state.output.current_transform(), Transform::Flipped180);
 
-        let new_size = Size::from((1920, 1080));
-        state.update_output_size(new_size);
-        let updated_mode = state.output.current_mode().unwrap();
-        assert_eq!(updated_mode.size, new_size);
+        state.update_output_size((1920, 1080).into());
+        assert_eq!(
+            state.output.current_mode().unwrap().size,
+            (1920, 1080).into()
+        );
     }
 
     #[test]
@@ -384,16 +434,18 @@ mod tests {
         let display = Display::<KynexState>::new().unwrap();
         let state = KynexState::new(
             &display.handle(),
-            "wayland-test-exit".to_string(),
-            Size::from((800, 600)),
+            "wayland-test-exit".into(),
+            (800, 600).into(),
         )
         .unwrap();
 
-        let action = state.binding_matcher.matches(
-            kx_input::KeyModifiers::CTRL | kx_input::KeyModifiers::SHIFT,
-            kx_input::KeySym::ESCAPE,
+        assert_eq!(
+            state.binding_matcher.matches(
+                kx_input::KeyModifiers::CTRL | kx_input::KeyModifiers::SHIFT,
+                kx_input::KeySym::ESCAPE,
+            ),
+            Some(&kx_input::CompositorAction::Quit)
         );
-        assert_eq!(action, Some(&kx_input::CompositorAction::Quit));
     }
 
     #[test]
@@ -403,8 +455,8 @@ mod tests {
         let display = Display::<KynexState>::new().unwrap();
         let mut state = KynexState::new(
             &display.handle(),
-            "wayland-test-multi".to_string(),
-            Size::from((1280, 720)),
+            "wayland-test-multi".into(),
+            (1280, 720).into(),
         )
         .unwrap();
 
@@ -415,12 +467,12 @@ mod tests {
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
-                make: "Kynex".to_string(),
-                model: "HDMI".to_string(),
+                make: "Kynex".into(),
+                model: "HDMI".into(),
             },
         );
-        let sec_mode = smithay::output::Mode {
-            size: Size::from((1920, 1080)),
+        let sec_mode = Mode {
+            size: (1920, 1080).into(),
             refresh: 60_000,
         };
         secondary.set_preferred(sec_mode);
@@ -428,20 +480,20 @@ mod tests {
             Some(sec_mode),
             Some(Transform::Normal),
             Some(Scale::Integer(1)),
-            Some(Point::from((1280, 0))),
+            Some((1280, 0).into()),
         );
 
-        state.map_output(&display.handle(), &secondary, Point::from((1280, 0)));
+        state.map_output(&display.handle(), &secondary, (1280, 0));
         assert_eq!(state.space.outputs().count(), 2);
 
         state.unmap_output(&secondary);
         assert_eq!(state.space.outputs().count(), 1);
 
         state.migrate_windows_from_unplugged(
-            Point::from((1280, 0)),
-            Size::from((1920, 1080)),
-            Point::from((0, 0)),
-            Size::from((1280, 720)),
+            (1280, 0).into(),
+            (1920, 1080).into(),
+            (0, 0).into(),
+            (1280, 720).into(),
         );
         assert_eq!(state.space.outputs().count(), 1);
     }
