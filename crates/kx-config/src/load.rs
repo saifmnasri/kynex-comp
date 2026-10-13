@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::error::ConfigError;
 use crate::types::{
-    Config, GeneralConfig, InputConfig, MAX_REPEAT_DELAY_MS, MAX_REPEAT_RATE_HZ,
+    Config, GeneralConfig, InputConfig, KeybindingConfig, MAX_REPEAT_DELAY_MS, MAX_REPEAT_RATE_HZ,
     MIN_REPEAT_DELAY_MS, MIN_REPEAT_RATE_HZ,
 };
 
@@ -19,6 +19,9 @@ pub const SUPPORTED_CONFIG_VERSION: u32 = 1;
 
 /// Permitted values for `general.log_level`.
 const VALID_LOG_LEVELS: [&str; 5] = ["error", "warn", "info", "debug", "trace"];
+
+/// Permitted values for `keybindings.primary_mod`.
+const VALID_PRIMARY_MODS: [&str; 2] = ["super", "ctrlalt"];
 
 #[derive(Deserialize)]
 struct VersionHeader {
@@ -62,8 +65,20 @@ pub fn load_from_str(input: &str) -> Result<Config, ConfigError> {
 
     validate_general(&config.general)?;
     validate_input(&config.input)?;
+    validate_keybindings(&config.keybindings)?;
 
     Ok(config)
+}
+
+fn validate_keybindings(keybindings: &KeybindingConfig) -> Result<(), ConfigError> {
+    let pm = keybindings.primary_mod.to_ascii_lowercase();
+    if !VALID_PRIMARY_MODS.contains(&pm.as_str()) {
+        return Err(ConfigError::Validation(format!(
+            "invalid primary_mod '{}', must be one of: Super, CtrlAlt",
+            keybindings.primary_mod
+        )));
+    }
+    Ok(())
 }
 
 fn validate_general(general: &GeneralConfig) -> Result<(), ConfigError> {
@@ -242,6 +257,20 @@ mod tests {
         let rate_too_high = "config_version = 1\n[input]\nrepeat_rate_hz = 500\n";
         assert!(matches!(
             load_from_str(rate_too_high),
+            Err(ConfigError::Validation(_))
+        ));
+
+        let valid_super = "config_version = 1\n[keybindings]\nprimary_mod = \"Super\"\n";
+        let cfg = load_from_str(valid_super).unwrap();
+        assert_eq!(cfg.keybindings.primary_mod, "Super");
+
+        let valid_ctrlalt = "config_version = 1\n[keybindings]\nprimary_mod = \"CtrlAlt\"\n";
+        let cfg = load_from_str(valid_ctrlalt).unwrap();
+        assert_eq!(cfg.keybindings.primary_mod, "CtrlAlt");
+
+        let invalid_mod = "config_version = 1\n[keybindings]\nprimary_mod = \"Alt\"\n";
+        assert!(matches!(
+            load_from_str(invalid_mod),
             Err(ConfigError::Validation(_))
         ));
     }
