@@ -327,6 +327,16 @@ impl XdgShellHandler for KynexState {
         crate::grab::handle_client_move_request(self, &surface, &seat, serial);
     }
 
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        seat: WlSeat,
+        serial: Serial,
+        edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
+    ) {
+        crate::grab::handle_client_resize_request(self, &surface, &seat, serial, edges);
+    }
+
     fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
 
     fn reposition_request(

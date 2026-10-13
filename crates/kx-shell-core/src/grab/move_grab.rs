@@ -1,10 +1,7 @@
 // Copyright (c) 2026 Kynex. All rights reserved.
 // Proprietary and confidential. See LICENSE.
 
-//! Pointer grab implementations for interactive window management.
-//!
-//! Provides [`MoveSurfaceGrab`], which intercepts pointer motions
-//! and buttons during interactive window move operations.
+//! Pointer grab for interactive window move operations.
 
 use kx_layout::{WindowGeometry, WindowId, clamp_to_reachability};
 use smithay::input::pointer::{
@@ -19,46 +16,6 @@ use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::state::KynexState;
 use crate::window::{primary_output_usable_geometry, sync_layout_to_space};
-
-/// Linux input button code for mouse left button (`BTN_LEFT`).
-pub const BTN_LEFT: u32 = 0x110;
-
-/// Linux input button code for mouse right button (`BTN_RIGHT`).
-pub const BTN_RIGHT: u32 = 0x111;
-
-/// Converts Smithay [`ModifiersState`](smithay::input::keyboard::ModifiersState) into [`kx_input::KeyModifiers`].
-#[must_use]
-pub fn modifiers_to_key_modifiers(
-    mods: smithay::input::keyboard::ModifiersState,
-) -> kx_input::KeyModifiers {
-    let mut key_mods = kx_input::KeyModifiers::empty();
-    if mods.ctrl {
-        key_mods |= kx_input::KeyModifiers::CTRL;
-    }
-    if mods.shift {
-        key_mods |= kx_input::KeyModifiers::SHIFT;
-    }
-    if mods.alt {
-        key_mods |= kx_input::KeyModifiers::ALT;
-    }
-    if mods.logo {
-        key_mods |= kx_input::KeyModifiers::LOGO;
-    }
-    key_mods
-}
-
-/// Checks whether the primary modifier configured in state is active.
-#[must_use]
-pub fn is_primary_modifier_active(state: &KynexState) -> bool {
-    state
-        .seat
-        .get_keyboard()
-        .map(|kb| kb.modifier_state())
-        .is_some_and(|mods| {
-            let key_mods = modifiers_to_key_modifiers(mods);
-            state.binding_matcher.primary_modifier().is_active(key_mods)
-        })
-}
 
 /// Pointer grab for interactive window movement.
 pub struct MoveSurfaceGrab {
