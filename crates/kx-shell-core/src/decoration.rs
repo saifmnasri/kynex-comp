@@ -61,27 +61,42 @@ pub fn cursor_icon_for_hit_test(hit: &DecorationHitTest) -> Option<CursorIcon> {
 ///
 /// Returns button elements followed by the titlebar element so that in Smithay's
 /// `.rev()` render loop, the titlebar is drawn first and the buttons on top.
+fn button_element(pos: (i32, i32), color_arr: [f32; 4]) -> SolidColorRenderElement {
+    let color = Color32F::new(color_arr[0], color_arr[1], color_arr[2], color_arr[3]);
+    let rect = Rectangle::new(
+        Point::<i32, Physical>::from(pos),
+        Size::<i32, Physical>::from((BUTTON_SIZE, BUTTON_SIZE)),
+    );
+    SolidColorRenderElement::new(
+        Id::new(),
+        rect,
+        CommitCounter::default(),
+        color,
+        Kind::Unspecified,
+    )
+}
+
+/// Generates solid-color render elements for an SSD-decorated window.
+///
+/// Returns button elements followed by the titlebar element so that in Smithay's
+/// `.rev()` render loop, the titlebar is drawn first and the buttons on top.
 #[must_use]
 pub fn render_elements_for_window(
     geo: WindowGeometry,
     is_active: bool,
 ) -> Vec<SolidColorRenderElement> {
     let dec = DecorationGeometry::for_window(geo);
-    let titlebar_color = if is_active {
-        Color32F::new(
-            decoration_colors::TITLEBAR_ACTIVE[0],
-            decoration_colors::TITLEBAR_ACTIVE[1],
-            decoration_colors::TITLEBAR_ACTIVE[2],
-            decoration_colors::TITLEBAR_ACTIVE[3],
-        )
+    let titlebar_arr = if is_active {
+        decoration_colors::TITLEBAR_ACTIVE
     } else {
-        Color32F::new(
-            decoration_colors::TITLEBAR_INACTIVE[0],
-            decoration_colors::TITLEBAR_INACTIVE[1],
-            decoration_colors::TITLEBAR_INACTIVE[2],
-            decoration_colors::TITLEBAR_INACTIVE[3],
-        )
+        decoration_colors::TITLEBAR_INACTIVE
     };
+    let titlebar_color = Color32F::new(
+        titlebar_arr[0],
+        titlebar_arr[1],
+        titlebar_arr[2],
+        titlebar_arr[3],
+    );
 
     let titlebar_rect = Rectangle::new(
         Point::<i32, Physical>::from((dec.titlebar.x, dec.titlebar.y)),
@@ -95,58 +110,17 @@ pub fn render_elements_for_window(
         Kind::Unspecified,
     );
 
-    let close_color = Color32F::new(
-        decoration_colors::CLOSE_BUTTON[0],
-        decoration_colors::CLOSE_BUTTON[1],
-        decoration_colors::CLOSE_BUTTON[2],
-        decoration_colors::CLOSE_BUTTON[3],
+    let close_elem = button_element(
+        (dec.close_button.x, dec.close_button.y),
+        decoration_colors::CLOSE_BUTTON,
     );
-    let close_rect = Rectangle::new(
-        Point::<i32, Physical>::from((dec.close_button.x, dec.close_button.y)),
-        Size::<i32, Physical>::from((BUTTON_SIZE, BUTTON_SIZE)),
+    let max_elem = button_element(
+        (dec.maximize_button.x, dec.maximize_button.y),
+        decoration_colors::MAXIMIZE_BUTTON,
     );
-    let close_elem = SolidColorRenderElement::new(
-        Id::new(),
-        close_rect,
-        CommitCounter::default(),
-        close_color,
-        Kind::Unspecified,
-    );
-
-    let max_color = Color32F::new(
-        decoration_colors::MAXIMIZE_BUTTON[0],
-        decoration_colors::MAXIMIZE_BUTTON[1],
-        decoration_colors::MAXIMIZE_BUTTON[2],
-        decoration_colors::MAXIMIZE_BUTTON[3],
-    );
-    let max_rect = Rectangle::new(
-        Point::<i32, Physical>::from((dec.maximize_button.x, dec.maximize_button.y)),
-        Size::<i32, Physical>::from((BUTTON_SIZE, BUTTON_SIZE)),
-    );
-    let max_elem = SolidColorRenderElement::new(
-        Id::new(),
-        max_rect,
-        CommitCounter::default(),
-        max_color,
-        Kind::Unspecified,
-    );
-
-    let min_color = Color32F::new(
-        decoration_colors::MINIMIZE_BUTTON[0],
-        decoration_colors::MINIMIZE_BUTTON[1],
-        decoration_colors::MINIMIZE_BUTTON[2],
-        decoration_colors::MINIMIZE_BUTTON[3],
-    );
-    let min_rect = Rectangle::new(
-        Point::<i32, Physical>::from((dec.minimize_button.x, dec.minimize_button.y)),
-        Size::<i32, Physical>::from((BUTTON_SIZE, BUTTON_SIZE)),
-    );
-    let min_elem = SolidColorRenderElement::new(
-        Id::new(),
-        min_rect,
-        CommitCounter::default(),
-        min_color,
-        Kind::Unspecified,
+    let min_elem = button_element(
+        (dec.minimize_button.x, dec.minimize_button.y),
+        decoration_colors::MINIMIZE_BUTTON,
     );
 
     // In Smithay's damage_tracker::render_output, elements are drawn in reverse.
@@ -174,6 +148,9 @@ pub fn collect_ssd_render_elements(state: &KynexState) -> Vec<SolidColorRenderEl
         let Some(win) = state.window_manager.window(wid) else {
             continue;
         };
+        if win.state == kx_layout::WindowState::Fullscreen {
+            continue;
+        }
         let is_active = Some(wid) == focused_wid;
         elements.extend(render_elements_for_window(win.geometry, is_active));
     }
@@ -208,6 +185,16 @@ pub fn find_window_hit_test(
         let Some(win) = state.window_manager.window(wid) else {
             continue;
         };
+        if win.state == kx_layout::WindowState::Fullscreen {
+            if px >= win.geometry.x
+                && px < win.geometry.x.saturating_add(win.geometry.width)
+                && py >= win.geometry.y
+                && py < win.geometry.y.saturating_add(win.geometry.height)
+            {
+                return Some((wid, DecorationHitTest::Content));
+            }
+            continue;
+        }
         let has_ssd = window_has_ssd(window);
         let hit = hit_test_window(px, py, win.geometry, has_ssd, BORDER_MARGIN);
         if hit != DecorationHitTest::Outside {

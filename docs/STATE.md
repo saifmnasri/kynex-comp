@@ -118,15 +118,19 @@ The following hardware-dependent verification items are deferred until physical 
     - Step 3F.5: `xdg-activation-v1` token protocol handler (`XdgActivationState`, `XdgActivationHandler`) with token creation, quota bounding (`max_tokens = 32`), 30s TTL expiry, and focus transfer to target surface (`f5e489f`).
     - Step 3F.6: Comprehensive integration test suite in `crates/kx-shell-core/tests/layer_shell_client.rs` verifying authorized client lifecycle, global filtering for unauthorized clients, quota exhaustion disconnection, and quota reclamation upon surface destruction (`9ee6718`).
 
+  - **Sub-phase 3G (Output Handling, Fullscreen & Rehoming) — DONE:**
+    - Branch: `feat/phase-3g-output-handling`
+    - Step 3G.1: Multi-output tracking and overlap area calculation using saturating arithmetic in `primary_output_for_window`, correctly selecting best output for windows spanning multiple displays.
+    - Step 3G.2: Output-targeted fullscreening via `xdg_toplevel::set_fullscreen(target_output)` spanning target output dimensions and bypassing exclusive zones per ADR-0029.
+    - Step 3G.3: Automatic SSD decoration suppression (`collect_ssd_render_elements`) and resize border hit-test suppression (`find_window_hit_test` returning `DecorationHitTest::Content`) for fullscreen windows.
+    - Step 3G.4: Output unplugging and dynamic window rehoming in `migrate_windows_from_unplugged` synchronizing authoritative `WindowManager` geometry and `Space` projections per ADR-0030.
+    - Step 3G.5: Integration test suite in `crates/kx-shell-core/tests/output_handling.rs` with in-process test client verifying output overlap calculation, targeted fullscreen with SSD suppression, and unplug migration.
+
 ## Next
-- Sub-phase 3G (Output Handling, Fullscreen & Rehoming):
-  - `wl_surface.enter` / `wl_surface.leave` output tracking protocol events.
-  - Output-targeted fullscreen with decoration suppression and exclusive zone bypass.
-  - Multi-output window rehoming upon output disconnection or hotplug.
 - Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate):
-  - Hostile-client test suite for toplevels and layer surfaces.
+  - Hostile-client test suite for toplevels, layer surfaces, and malformed configure/resize requests.
   - Criterion benchmarks update in `benches/BASELINE.md`.
-  - Full audit and closure gate for Phase 3.
+  - Phase 3 security review and closure gate.
 
 ## Verify commands
 - `just check`
