@@ -93,7 +93,7 @@ The following hardware-dependent verification items are deferred until physical 
     - Step 3D.3: Keybinding action dispatch in nested and DRM event loops: close window, toggle maximize/fullscreen, switch workspace, move window to workspace.
     - Step 3D.4: Interactive move grab: serial validation, `MoveSurfaceGrab`, reachability clamping, `set_window_geometry` on `WindowManager`.
     - Step 3D.5: Interactive resize grab: edge detection (`detect_resize_edge`), `ResizeSurfaceGrab`, arithmetic math (`calculate_resize_geometry`), min/max size constraints clamping, integration with `nested/event.rs`, `drm/input.rs`, `state.rs` (`resize_request`). Modular grab architecture (`grab/mod.rs`, `grab/move_grab.rs`, `grab/resize_grab.rs`, `grab/resize_math.rs`).
-    - Step 3D.6: Workspace switching integration (`sync_layout_to_space` maps active workspace windows to space and unmaps inactive ones) + comprehensive integration tests in `crates/kx-shell-core/tests/interactive_grab.rs` (5 test scenarios covering move, resize, invalid client serial rejection, and modifier checks). ADR-0031 recorded.
+    - Step 3D.6: Workspace switching integration (`sync_layout_to_space` maps active workspace windows to space and unmaps inactive ones) + comprehensive integration tests in `crates/kx-shell-core/tests/interactive_grab.rs` (5 test scenarios covering move, resize, invalid client serial rejection, and modifier checks) and `crates/kx-shell-core/tests/xdg_shell_client.rs` (multi-window mapping, workspace isolation, moving windows across workspaces, client destroy lifecycle). ADR-0031 recorded.
 
 ## Next
 - Phase 3 audit and closure gate:
