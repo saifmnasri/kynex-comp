@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use kx_layout::{
     MAX_STRING_BYTES, MapWindowParams, SizeConstraints, WindowGeometry, WindowId, truncate_utf8,
 };
-use smithay::desktop::Window;
+use smithay::desktop::{Window, layer_map_for_output};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -25,7 +25,20 @@ use crate::state::KynexState;
 pub fn primary_output_usable_geometry(state: &KynexState) -> WindowGeometry {
     state.space.output_geometry(&state.output).map_or_else(
         || WindowGeometry::new(0, 0, 1280, 720),
-        |geo| WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h),
+        |geo| {
+            let layer_map = layer_map_for_output(&state.output);
+            let zone = layer_map.non_exclusive_zone();
+            if zone.size.w > 0 && zone.size.h > 0 {
+                WindowGeometry::new(
+                    geo.loc.x.saturating_add(zone.loc.x),
+                    geo.loc.y.saturating_add(zone.loc.y),
+                    zone.size.w,
+                    zone.size.h,
+                )
+            } else {
+                WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h)
+            }
+        },
     )
 }
 

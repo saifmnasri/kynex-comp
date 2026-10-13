@@ -48,6 +48,10 @@ pub struct Config {
     /// Keybinding configuration.
     #[serde(default)]
     pub keybindings: KeybindingConfig,
+
+    /// Privilege and security policy configuration.
+    #[serde(default)]
+    pub privilege: PrivilegeConfig,
 }
 
 impl Default for Config {
@@ -58,6 +62,7 @@ impl Default for Config {
             input: InputConfig::default(),
             appearance: AppearanceConfig::default(),
             keybindings: KeybindingConfig::default(),
+            privilege: PrivilegeConfig::default(),
         }
     }
 }
@@ -141,4 +146,13 @@ pub struct AppearanceConfig {
     /// Whether window transition animations are enabled.
     #[serde(default)]
     pub enable_animations: bool,
+}
+
+/// Privilege and security policy configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PrivilegeConfig {
+    /// Allow-listed absolute executable paths permitted to bind `zwlr_layer_shell_v1`.
+    #[serde(default)]
+    pub layer_shell_allow: Vec<String>,
 }
