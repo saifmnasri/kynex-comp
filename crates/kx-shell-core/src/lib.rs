@@ -12,6 +12,7 @@ pub mod error;
 pub mod frame_clock;
 pub mod nested;
 pub mod state;
+pub mod window;
 
 #[cfg(feature = "fault-injection")]
 pub mod fault;

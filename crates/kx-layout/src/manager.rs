@@ -280,6 +280,27 @@ impl WindowManager {
         }
     }
 
+    /// Returns the list of currently visible windows on the active workspace in stacking order (bottom to top).
+    #[must_use]
+    pub fn visible_windows(&self) -> Vec<(WindowId, WindowGeometry)> {
+        let active_ws = self.workspaces.active_workspace();
+        let ws_windows = self.workspaces.windows_on(active_ws).unwrap_or(&[]);
+        self.stacking
+            .windows()
+            .iter()
+            .copied()
+            .filter(|w| ws_windows.contains(w))
+            .filter_map(|wid| {
+                let win = self.windows.get(wid)?;
+                if win.state != WindowState::Minimized && win.is_mapped {
+                    Some((wid, win.geometry))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     /// Arranges managed windows according to the active layout engine.
     pub fn arrange(&mut self, output_geo: WindowGeometry, usable_area: WindowGeometry) {
         let mut window_refs = Vec::with_capacity(self.windows.len());

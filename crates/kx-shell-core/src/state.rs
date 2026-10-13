@@ -13,7 +13,6 @@ use smithay::input::keyboard::XkbConfig;
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
-use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
@@ -297,17 +296,7 @@ impl XdgShellHandler for KynexState {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        surface.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Activated);
-        });
-        surface.send_configure();
-        let window = Window::new_wayland_window(surface.clone());
-        self.space.map_element(window, (0, 0), true);
-
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-            keyboard.set_focus(self, Some(surface.wl_surface().clone()), serial);
-        }
+        crate::window::map_new_toplevel(self, &surface);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -332,20 +321,7 @@ impl XdgShellHandler for KynexState {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            if keyboard.current_focus().as_ref() == Some(surface.wl_surface()) {
-                let serial = smithay::utils::SERIAL_COUNTER.next_serial();
-                keyboard.set_focus(self, None, serial);
-            }
-        }
-        let window = self
-            .space
-            .elements()
-            .find(|w| w.toplevel() == Some(&surface))
-            .cloned();
-        if let Some(window) = window {
-            self.space.unmap_elem(&window);
-        }
+        crate::window::unmap_toplevel(self, &surface);
     }
 
     fn popup_destroyed(&mut self, _surface: PopupSurface) {
