@@ -28,6 +28,7 @@ use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::{
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_decoration,
     delegate_xdg_shell,
@@ -72,6 +73,10 @@ pub struct KynexState {
     pub cursor_status: CursorImageStatus,
     /// Layer shell protocol state (`zwlr_layer_shell_v1`).
     pub layer_shell_state: WlrLayerShellState,
+    /// Display handle for Wayland server.
+    pub display_handle: DisplayHandle,
+    /// XDG activation protocol state (`xdg_activation_v1`).
+    pub xdg_activation_state: XdgActivationState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -112,6 +117,8 @@ impl KynexState {
         let surface_to_window_id = HashMap::new();
         let config = kx_config::Config::default();
         let layer_shell_state = create_layer_shell_state(dh);
+        let display_handle = dh.clone();
+        let xdg_activation_state = XdgActivationState::new::<Self>(dh);
 
         Ok(Self {
             compositor_state,
@@ -131,6 +138,8 @@ impl KynexState {
             xdg_decoration_state,
             cursor_status,
             layer_shell_state,
+            display_handle,
+            xdg_activation_state,
             config,
         })
     }

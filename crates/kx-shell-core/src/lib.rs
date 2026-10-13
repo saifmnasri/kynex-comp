@@ -7,6 +7,7 @@
 //! rendering loop, and protocol dispatch.
 
 pub mod action;
+pub mod activation;
 pub mod client;
 pub mod data_device;
 pub mod decoration;
