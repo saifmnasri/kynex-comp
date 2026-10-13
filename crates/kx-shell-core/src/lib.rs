@@ -14,6 +14,7 @@ pub mod drm;
 pub mod error;
 pub mod frame_clock;
 pub mod grab;
+pub mod layer_shell;
 pub mod nested;
 pub mod state;
 pub mod window;
