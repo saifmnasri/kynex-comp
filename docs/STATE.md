@@ -87,17 +87,25 @@ The following hardware-dependent verification items are deferred until physical 
     - Step 3C.2: Implemented `sync_layout_to_space` synchronizing `WindowManager` positions/stacking into Smithay's `Space`, plus `map_new_toplevel` and `unmap_toplevel` in `crates/kx-shell-core/src/window.rs`.
     - Step 3C.3: Handled `xdg_toplevel` protocol requests: `set_maximized`, `unset_maximized`, `set_fullscreen`, `unset_fullscreen`, `set_minimized`, `ack_configure`, app_id and title changes, and buffer commit size synchronisation.
     - Step 3C.4: Integration test suite in `crates/kx-shell-core/tests/xdg_shell_client.rs` with wayland-client verifying toplevel lifecycle, state requests, and minimize/unminimize without panics.
+  - **Sub-phase 3D (Interactive Move/Resize, Keybindings, and Workspaces) — DONE:**
+    - Step 3D.1: Configurable primary modifier (`primary_modifier = "Alt"` or `"Logo"`) in `kx-config` and `kx-input` with collision avoidance.
+    - Step 3D.2: Atomic hot-reload safety with fallback in `kx-config`.
+    - Step 3D.3: Keybinding action dispatch in nested and DRM event loops: close window, toggle maximize/fullscreen, switch workspace, move window to workspace.
+    - Step 3D.4: Interactive move grab: serial validation, `MoveSurfaceGrab`, reachability clamping, `set_window_geometry` on `WindowManager`.
+    - Step 3D.5: Interactive resize grab: edge detection (`detect_resize_edge`), `ResizeSurfaceGrab`, arithmetic math (`calculate_resize_geometry`), min/max size constraints clamping, integration with `nested/event.rs`, `drm/input.rs`, `state.rs` (`resize_request`). Modular grab architecture (`grab/mod.rs`, `grab/move_grab.rs`, `grab/resize_grab.rs`, `grab/resize_math.rs`).
+    - Step 3D.6: Workspace switching integration (`sync_layout_to_space` maps active workspace windows to space and unmaps inactive ones) + comprehensive integration tests in `crates/kx-shell-core/tests/interactive_grab.rs` (5 test scenarios covering move, resize, invalid client serial rejection, and modifier checks). ADR-0031 recorded.
 
 ## Next
-- Sub-phase 3D: Server-Side Decorations (`kx-protocols` / `kx-shell-core` / `kx-render`):
-  - Step 3D.1: Title-less SSD colored squares (ADR-0026) drawing buttons as plain colored squares.
-  - Step 3D.2: SSD click hit detection for close, minimize, maximize.
-  - Step 3D.3: `zxdg_decoration_manager_v1` negotiation (prefer SSD).
+- Phase 3 audit and closure gate:
+  - Code hygiene review across workspace (verify 0 files > 500 lines, 0 production functions > 60 lines).
+  - Security review of client-driven resize/move paths and quota boundaries.
+  - Prepare for Phase 4 (Real-App Protocol Completeness).
 
 ## Verify commands
 - `just check`
 - `cargo test -p kx-layout`
 - `cargo test -p kx-shell-core --test xdg_shell_client`
+- `cargo test -p kx-shell-core --test interactive_grab`
 - `cargo test --workspace --features fault-injection --locked`
 - `cargo check --release`
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`

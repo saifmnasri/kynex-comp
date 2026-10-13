@@ -150,3 +150,13 @@ Format: `ADR-NNNN — title — status — context — decision — consequences
 **Context:** In Smithay, `Space<Window>` handles window spatial placement and rendering element iteration. Having business logic directly mutate `Space` without a central model leads to desynchronized workspace, focus, and reachability state.
 **Decision:** `WindowManager` in `kx-layout` is the sole authoritative source of truth for window geometry, state, focus, and workspace assignment. Smithay's `Space` is treated as a pure projection updated exclusively through a single synchronization function: `sync_space(&mut self)`. Every model mutation calls `sync_space()` and schedules a frame (`request_frame()`). An integration test asserts that `WindowManager` and `Space` are in complete agreement after every operation.
 **Consequences:** Clear architectural boundary, eliminate desync bugs, fully testable state machine independent of Smithay rendering.
+
+## ADR-0031 — Pointer grab architecture for interactive move and resize — Accepted
+**Context:** Wayland clients can request interactive move and resize via `xdg_toplevel.move` and `xdg_toplevel.resize`. The compositor also initiates move and resize via modifier clicks (Mod+Left click for move, Mod+Right click for resize). Untrusted client requests can supply bogus serials, and manual dragging can pull windows entirely off-screen or violate size bounds.
+**Decision:**
+1. Validate client serials against pointer button down serial (`pointer.button_down_serial()`); reject requests with mismatched or stale serials without crashing or entering a grab.
+2. Implement `MoveSurfaceGrab` and `ResizeSurfaceGrab` using Smithay's `PointerGrab` trait, encapsulated in modular sub-units (`grab/move_grab.rs`, `grab/resize_grab.rs`, `grab/resize_math.rs`).
+3. Clamp window positions during moves to retain at least titlebar reachability height (32px) and margin (32px) within display bounds.
+4. Detect resize edges from relative pointer position using an 8-zone perimeter margin (12px) if unassigned, and clamp resized geometry against window `min_size` / `max_size` constraints and minimum physical limits (64x64px).
+5. Compositor Mod+click grabs (`try_start_compositor_grab`) raise the window, activate focus, and initiate the corresponding grab.
+**Consequences:** Complete protection against client grab spoofing; windows can never be dragged completely off-screen; resize operations strictly preserve application size constraints.
