@@ -22,11 +22,13 @@ use smithay::utils::{Logical, Physical, Point, Serial, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
 use smithay::wayland::output::OutputHandler;
+use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::{
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_decoration,
     delegate_xdg_shell,
@@ -69,6 +71,14 @@ pub struct KynexState {
     pub xdg_decoration_state: XdgDecorationState,
     /// Current pointer cursor image status (requested by client or compositor).
     pub cursor_status: CursorImageStatus,
+    /// Layer shell protocol state (`zwlr_layer_shell_v1`).
+    pub layer_shell_state: WlrLayerShellState,
+    /// Display handle for Wayland server.
+    pub display_handle: DisplayHandle,
+    /// XDG activation protocol state (`xdg_activation_v1`).
+    pub xdg_activation_state: XdgActivationState,
+    /// Compositor configuration.
+    pub config: kx_config::Config,
 }
 
 impl KynexState {
@@ -105,6 +115,10 @@ impl KynexState {
         let window_manager = WindowManager::new(DEFAULT_WORKSPACE_COUNT);
         let window_map = HashMap::new();
         let surface_to_window_id = HashMap::new();
+        let config = kx_config::Config::default();
+        let layer_shell_state = create_layer_shell_state(dh);
+        let display_handle = dh.clone();
+        let xdg_activation_state = XdgActivationState::new::<Self>(dh);
 
         Ok(Self {
             compositor_state,
@@ -123,6 +137,10 @@ impl KynexState {
             data_device_state,
             xdg_decoration_state,
             cursor_status,
+            layer_shell_state,
+            display_handle,
+            xdg_activation_state,
+            config,
         })
     }
 
@@ -261,6 +279,16 @@ impl CompositorHandler for KynexState {
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler::<Self>(surface);
         self.popups.commit(surface);
+        for output in self.space.outputs() {
+            let mut layer_map = smithay::desktop::layer_map_for_output(output);
+            if layer_map
+                .layer_for_surface(surface, smithay::desktop::WindowSurfaceType::all())
+                .is_some()
+            {
+                layer_map.arrange();
+                break;
+            }
+        }
         for window in self.space.elements() {
             let mut belongs = false;
             window.with_surfaces(|s, _| {
@@ -412,6 +440,14 @@ delegate_seat!(KynexState);
 delegate_output!(KynexState);
 delegate_xdg_shell!(KynexState);
 delegate_xdg_decoration!(KynexState);
+
+fn create_layer_shell_state(dh: &DisplayHandle) -> WlrLayerShellState {
+    WlrLayerShellState::new_with_filter::<KynexState, _>(dh, |client| {
+        client
+            .get_data::<crate::client::ClientState>()
+            .is_some_and(crate::client::ClientState::is_layer_shell_allowed)
+    })
+}
 
 #[cfg(test)]
 #[path = "state_tests.rs"]

@@ -66,8 +66,20 @@ pub fn load_from_str(input: &str) -> Result<Config, ConfigError> {
     validate_general(&config.general)?;
     validate_input(&config.input)?;
     validate_keybindings(&config.keybindings)?;
+    validate_privilege(&config.privilege)?;
 
     Ok(config)
+}
+
+fn validate_privilege(privilege: &crate::types::PrivilegeConfig) -> Result<(), ConfigError> {
+    for path in &privilege.layer_shell_allow {
+        if path.is_empty() || !path.starts_with('/') || path.contains("..") {
+            return Err(ConfigError::Validation(format!(
+                "invalid layer_shell_allow path '{path}', must be an absolute path without '..'"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn validate_keybindings(keybindings: &KeybindingConfig) -> Result<(), ConfigError> {
@@ -271,6 +283,34 @@ mod tests {
         let invalid_mod = "config_version = 1\n[keybindings]\nprimary_mod = \"Alt\"\n";
         assert!(matches!(
             load_from_str(invalid_mod),
+            Err(ConfigError::Validation(_))
+        ));
+
+        let valid_privilege = r#"
+            config_version = 1
+            [privilege]
+            layer_shell_allow = ["/usr/bin/waybar", "/usr/libexec/kynex-panel"]
+        "#;
+        let cfg = load_from_str(valid_privilege).unwrap();
+        assert_eq!(cfg.privilege.layer_shell_allow.len(), 2);
+
+        let relative_privilege = r#"
+            config_version = 1
+            [privilege]
+            layer_shell_allow = ["bin/waybar"]
+        "#;
+        assert!(matches!(
+            load_from_str(relative_privilege),
+            Err(ConfigError::Validation(_))
+        ));
+
+        let traversal_privilege = r#"
+            config_version = 1
+            [privilege]
+            layer_shell_allow = ["/usr/bin/../bin/waybar"]
+        "#;
+        assert!(matches!(
+            load_from_str(traversal_privilege),
             Err(ConfigError::Validation(_))
         ));
     }
