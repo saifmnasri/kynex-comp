@@ -193,8 +193,6 @@ impl BindingMatcher {
         let emergency_keys = [
             (cs, KeySym::ESCAPE),
             (ca, KeySym::BACKSPACE),
-            (ca, KeySym::Q),
-            (ca, KeySym::Q_UPPER),
             (cs, KeySym::Q),
             (cs, KeySym::Q_UPPER),
             (cas, KeySym::Q),
