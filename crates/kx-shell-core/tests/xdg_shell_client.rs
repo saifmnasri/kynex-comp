@@ -140,6 +140,8 @@ struct TestHarness {
     conn: Connection,
     event_queue: wayland_client::EventQueue<XdgClientData>,
     client_state: XdgClientData,
+    compositor: wl_compositor::WlCompositor,
+    wm_base: xdg_wm_base::XdgWmBase,
     surface: wl_surface::WlSurface,
     xdg_surface: xdg_surface::XdgSurface,
     xdg_toplevel: xdg_toplevel::XdgToplevel,
@@ -175,11 +177,11 @@ impl TestHarness {
 
         let compositor = client_state
             .compositor
-            .take()
+            .clone()
             .ok_or("wl_compositor must be advertised")?;
         let wm_base = client_state
             .wm_base
-            .take()
+            .clone()
             .ok_or("xdg_wm_base must be advertised")?;
 
         let surface = compositor.create_surface(&qhandle, ());
@@ -192,10 +194,26 @@ impl TestHarness {
             conn,
             event_queue,
             client_state,
+            compositor,
+            wm_base,
             surface,
             xdg_surface,
             xdg_toplevel,
         })
+    }
+
+    fn create_window(
+        &self,
+    ) -> (
+        wl_surface::WlSurface,
+        xdg_surface::XdgSurface,
+        xdg_toplevel::XdgToplevel,
+    ) {
+        let qhandle = self.event_queue.handle();
+        let surface = self.compositor.create_surface(&qhandle, ());
+        let xdg_surface = self.wm_base.get_xdg_surface(&surface, &qhandle, ());
+        let xdg_toplevel = xdg_surface.get_toplevel(&qhandle, ());
+        (surface, xdg_surface, xdg_toplevel)
     }
 
     fn step(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -343,5 +361,53 @@ fn test_xdg_toplevel_metadata_and_minimize() -> Result<(), Box<dyn std::error::E
         .ok_or("Window not found")?;
     assert_eq!(win.state, WindowState::Normal);
     assert_eq!(harness.state.space.elements().count(), 1);
+    Ok(())
+}
+
+#[test]
+fn test_multiple_windows_and_workspace_switching() -> Result<(), Box<dyn std::error::Error>> {
+    let mut harness = TestHarness::new()?;
+    assert_eq!(harness.state.space.elements().count(), 0);
+
+    harness.xdg_toplevel.set_title("Window 1".to_string());
+    harness.surface.commit();
+    harness.step()?;
+    assert_eq!(harness.state.space.elements().count(), 1);
+    assert_eq!(harness.state.window_manager.windows().len(), 1);
+
+    let (surf2, xdg_surf2, toplevel2) = harness.create_window();
+    toplevel2.set_title("Window 2".to_string());
+    surf2.commit();
+    harness.step()?;
+    assert_eq!(harness.state.space.elements().count(), 2);
+    assert_eq!(harness.state.window_manager.windows().len(), 2);
+
+    let wids: Vec<_> = harness.state.window_map.keys().copied().collect();
+    assert_eq!(wids.len(), 2);
+
+    let switched = harness.state.window_manager.switch_workspace(2);
+    assert!(switched);
+    sync_layout_to_space(&mut harness.state);
+    assert_eq!(harness.state.space.elements().count(), 0);
+
+    let second_win_id = wids[1];
+    harness
+        .state
+        .window_manager
+        .move_window_to_workspace_index(second_win_id, 2)?;
+    sync_layout_to_space(&mut harness.state);
+    assert_eq!(harness.state.space.elements().count(), 1);
+
+    let switched_back = harness.state.window_manager.switch_workspace(1);
+    assert!(switched_back);
+    sync_layout_to_space(&mut harness.state);
+    assert_eq!(harness.state.space.elements().count(), 1);
+
+    toplevel2.destroy();
+    xdg_surf2.destroy();
+    surf2.destroy();
+    harness.conn.flush()?;
+    harness.display.dispatch_clients(&mut harness.state)?;
+    assert_eq!(harness.state.window_manager.windows().len(), 1);
     Ok(())
 }

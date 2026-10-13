@@ -408,29 +408,24 @@ mod tests {
     #[test]
     fn test_kynex_state_initialization() {
         let display: Display<KynexState> = Display::new().unwrap();
-        let initial_size = Size::from((1280, 720));
         let state = KynexState::new(
             &display.handle(),
-            "wayland-test-0".to_string(),
-            initial_size,
+            "wayland-test-0".into(),
+            (1280, 720).into(),
         )
         .unwrap();
 
         assert_eq!(state.socket_name, "wayland-test-0");
-        let current_mode = state.output.current_mode().unwrap();
-        assert_eq!(current_mode.size, initial_size);
-        assert_eq!(current_mode.refresh, 60_000);
+        let mode = state.output.current_mode().unwrap();
+        assert_eq!((mode.size, mode.refresh), ((1280, 720).into(), 60_000));
         assert!(matches!(state.output.current_scale(), Scale::Integer(1)));
-        assert_eq!(
-            state.output.current_transform(),
-            Transform::Flipped180,
-            "Nested output must be Flipped180 to cancel GlesRenderer OpenGL scanout inversion"
-        );
+        assert_eq!(state.output.current_transform(), Transform::Flipped180);
 
-        let new_size = Size::from((1920, 1080));
-        state.update_output_size(new_size);
-        let updated_mode = state.output.current_mode().unwrap();
-        assert_eq!(updated_mode.size, new_size);
+        state.update_output_size((1920, 1080).into());
+        assert_eq!(
+            state.output.current_mode().unwrap().size,
+            (1920, 1080).into()
+        );
     }
 
     #[test]
@@ -438,16 +433,18 @@ mod tests {
         let display = Display::<KynexState>::new().unwrap();
         let state = KynexState::new(
             &display.handle(),
-            "wayland-test-exit".to_string(),
-            Size::from((800, 600)),
+            "wayland-test-exit".into(),
+            (800, 600).into(),
         )
         .unwrap();
 
-        let action = state.binding_matcher.matches(
-            kx_input::KeyModifiers::CTRL | kx_input::KeyModifiers::SHIFT,
-            kx_input::KeySym::ESCAPE,
+        assert_eq!(
+            state.binding_matcher.matches(
+                kx_input::KeyModifiers::CTRL | kx_input::KeyModifiers::SHIFT,
+                kx_input::KeySym::ESCAPE,
+            ),
+            Some(&kx_input::CompositorAction::Quit)
         );
-        assert_eq!(action, Some(&kx_input::CompositorAction::Quit));
     }
 
     #[test]
@@ -457,8 +454,8 @@ mod tests {
         let display = Display::<KynexState>::new().unwrap();
         let mut state = KynexState::new(
             &display.handle(),
-            "wayland-test-multi".to_string(),
-            Size::from((1280, 720)),
+            "wayland-test-multi".into(),
+            (1280, 720).into(),
         )
         .unwrap();
 
@@ -469,12 +466,12 @@ mod tests {
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
-                make: "Kynex".to_string(),
-                model: "HDMI".to_string(),
+                make: "Kynex".into(),
+                model: "HDMI".into(),
             },
         );
-        let sec_mode = smithay::output::Mode {
-            size: Size::from((1920, 1080)),
+        let sec_mode = Mode {
+            size: (1920, 1080).into(),
             refresh: 60_000,
         };
         secondary.set_preferred(sec_mode);
@@ -482,20 +479,20 @@ mod tests {
             Some(sec_mode),
             Some(Transform::Normal),
             Some(Scale::Integer(1)),
-            Some(Point::from((1280, 0))),
+            Some((1280, 0).into()),
         );
 
-        state.map_output(&display.handle(), &secondary, Point::from((1280, 0)));
+        state.map_output(&display.handle(), &secondary, (1280, 0));
         assert_eq!(state.space.outputs().count(), 2);
 
         state.unmap_output(&secondary);
         assert_eq!(state.space.outputs().count(), 1);
 
         state.migrate_windows_from_unplugged(
-            Point::from((1280, 0)),
-            Size::from((1920, 1080)),
-            Point::from((0, 0)),
-            Size::from((1280, 720)),
+            (1280, 0).into(),
+            (1920, 1080).into(),
+            (0, 0).into(),
+            (1280, 720).into(),
         );
         assert_eq!(state.space.outputs().count(), 1);
     }
