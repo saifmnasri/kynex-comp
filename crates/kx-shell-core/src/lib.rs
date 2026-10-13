@@ -6,6 +6,7 @@
 //! Provides the primary compositor state, output tracking, window management,
 //! rendering loop, and protocol dispatch.
 
+pub mod action;
 pub mod client;
 pub mod drm;
 pub mod error;
@@ -17,6 +18,7 @@ pub mod window;
 #[cfg(feature = "fault-injection")]
 pub mod fault;
 
+pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
 pub use client::{ClientLimits, ClientState};
 pub use drm::{
     ConnectorInfo, DrmDeviceInfo, DrmDiagnosticReport, DrmOptions, DrmSession, ModeInfo, run_drm,
