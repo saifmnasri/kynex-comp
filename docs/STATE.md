@@ -109,28 +109,31 @@ The following hardware-dependent verification items are deferred until physical 
     - Vblank-synchronized, damage-driven smooth window dragging natively adapting to display refresh rate via `request_redraw()`.
     - Maintained code hygiene limits: 0 files > 500 lines, 0 functions > 60 lines, `#![forbid(unsafe_code)]`, and `just check` green.
     - Live interactive multi-app verification passed cleanly: 6,667 frames rendered across Terminal (`ptyxis`), GNOME Calculator, and Firefox, smooth 60+ FPS window dragging, border resize cursor changes, control buttons, and clean shutdown (exit code 0). Merged to `dev` (`98b6612`) and `main` (`ac9cced`), pushed to `origin`.
+  - **Sub-phase 3F (Layer-Shell, Privilege Policy & XDG Activation) — DONE:**
+    - Branch: `feat/phase-3f-layer-shell`
+    - Step 3F.1: Privileged configuration schema in `kx-config` (`[privilege.layer_shell_allow]` allow-list) with validation and unit tests (`b019290`).
+    - Step 3F.2: Client credentials caching (`SO_PEERCRED` and `/proc/<pid>/exe` resolution) and layer shell policy enforcement in `kx-shell-core` (`1faed8e`).
+    - Step 3F.3: Filtered `zwlr_layer_shell_v1` global (`GlobalDispatch::can_view`), per-client layer surface quota limits (`max_layer_surfaces = 8`), and exclusive zone margin recalculation updating `WindowManager::set_exclusive_margins` (`b25b83a`).
+    - Step 3F.4: Multi-layer Z-order rendering in `Space` & `GlesRenderer`: `Background` -> `Bottom` -> Windows -> `Top` -> Fullscreen -> `Overlay`.
+    - Step 3F.5: `xdg-activation-v1` token protocol handler (`XdgActivationState`, `XdgActivationHandler`) with token creation, quota bounding (`max_tokens = 32`), 30s TTL expiry, and focus transfer to target surface (`f5e489f`).
+    - Step 3F.6: Comprehensive integration test suite in `crates/kx-shell-core/tests/layer_shell_client.rs` verifying authorized client lifecycle, global filtering for unauthorized clients, quota exhaustion disconnection, and quota reclamation upon surface destruction (`9ee6718`).
 
 ## Next
-- Sub-phase 3F (Layer-Shell, Privilege Policy & XDG Activation):
-  - Client privilege identity caching from `/proc/<pid>/exe` at socket connection accept time (`[privilege.layer_shell_allow]`).
-  - `zwlr_layer_shell_v1` handler with `GlobalDispatch::can_view` filtering and exclusive zone margins.
-  - Multi-layer Z-order rendering (`Background` -> `Bottom` -> Windows -> `Top` -> Fullscreen -> `Overlay`).
-  - `xdg-activation-v1` with injectable `Clock` trait and token expiration.
 - Sub-phase 3G (Output Handling, Fullscreen & Rehoming):
-  - `wl_surface.enter` / `wl_surface.leave` output protocol events.
-  - Output-targeted fullscreen with decoration hiding and exclusive zone bypass.
+  - `wl_surface.enter` / `wl_surface.leave` output tracking protocol events.
+  - Output-targeted fullscreen with decoration suppression and exclusive zone bypass.
+  - Multi-output window rehoming upon output disconnection or hotplug.
 - Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate):
   - Hostile-client test suite for toplevels and layer surfaces.
   - Criterion benchmarks update in `benches/BASELINE.md`.
   - Full audit and closure gate for Phase 3.
-
-
 
 ## Verify commands
 - `just check`
 - `cargo test -p kx-layout`
 - `cargo test -p kx-shell-core --test xdg_shell_client`
 - `cargo test -p kx-shell-core --test interactive_grab`
+- `cargo test -p kx-shell-core --test layer_shell_client`
 - `cargo test --workspace --features fault-injection --locked`
 - `cargo check --release`
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`
