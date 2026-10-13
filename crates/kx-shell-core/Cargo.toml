@@ -11,6 +11,7 @@ publish.workspace = true
 kx-common.workspace = true
 kx-config.workspace = true
 kx-input.workspace = true
+kx-layout.workspace = true
 smithay.workspace = true
 calloop.workspace = true
 slotmap.workspace = true

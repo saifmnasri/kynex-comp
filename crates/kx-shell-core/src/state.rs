@@ -3,8 +3,10 @@
 
 //! Root compositor state and Wayland protocol delegates.
 
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowId, WindowManager};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::desktop::{PopupKind, PopupManager, Space, Window};
 use smithay::input::keyboard::XkbConfig;
@@ -54,6 +56,12 @@ pub struct KynexState {
     pub popups: PopupManager,
     /// Active compositor key binding matcher.
     pub binding_matcher: kx_input::BindingMatcher,
+    /// Authoritative window manager coordinating workspaces, stacking, and layout.
+    pub window_manager: WindowManager,
+    /// Mapping from layout [`WindowId`] to Smithay desktop [`Window`].
+    pub window_map: HashMap<WindowId, Window>,
+    /// Reverse lookup mapping from [`WlSurface`] to layout [`WindowId`].
+    pub surface_to_window_id: HashMap<WlSurface, WindowId>,
 }
 
 impl KynexState {
@@ -83,6 +91,9 @@ impl KynexState {
         space.map_output(&output, (0, 0));
         let popups = PopupManager::default();
         let binding_matcher = kx_input::BindingMatcher::with_defaults();
+        let window_manager = WindowManager::new(DEFAULT_WORKSPACE_COUNT);
+        let window_map = HashMap::new();
+        let surface_to_window_id = HashMap::new();
 
         Ok(Self {
             compositor_state,
@@ -95,6 +106,9 @@ impl KynexState {
             space,
             popups,
             binding_matcher,
+            window_manager,
+            window_map,
+            surface_to_window_id,
         })
     }
 
