@@ -8,6 +8,7 @@
 
 pub mod action;
 pub mod client;
+pub mod data_device;
 pub mod drm;
 pub mod error;
 pub mod frame_clock;

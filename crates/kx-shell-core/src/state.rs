@@ -61,6 +61,8 @@ pub struct KynexState {
     pub window_map: HashMap<WindowId, Window>,
     /// Reverse lookup mapping from [`WlSurface`] to layout [`WindowId`].
     pub surface_to_window_id: HashMap<WlSurface, WindowId>,
+    /// Data device protocol state (`wl_data_device_manager`).
+    pub data_device_state: smithay::wayland::selection::data_device::DataDeviceState,
 }
 
 impl KynexState {
@@ -85,6 +87,8 @@ impl KynexState {
 
         let _global = output.create_global::<Self>(dh);
 
+        let data_device_state =
+            smithay::wayland::selection::data_device::DataDeviceState::new::<Self>(dh);
         let xdg_shell_state = XdgShellState::new::<Self>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
@@ -108,6 +112,7 @@ impl KynexState {
             window_manager,
             window_map,
             surface_to_window_id,
+            data_device_state,
         })
     }
 
@@ -138,11 +143,7 @@ impl KynexState {
         output.set_preferred(mode);
         output.change_current_state(
             Some(mode),
-            // The nested winit backend renders into an EGLSurface window rather than
-            // a DRM KMS scanout plane. In Smithay's GlesRenderer, an internal flip180
-            // matrix is applied to compensate for DRM hardware scanout conventions.
-            // Using Transform::Flipped180 cancels this internal flip so that the nested
-            // window displays right-side up.
+            // Flipped180 cancels GlesRenderer's DRM scanout flip so nested EGL window is upright.
             Some(Transform::Flipped180),
             Some(Scale::Integer(1)),
             Some(Point::from((0, 0))),
