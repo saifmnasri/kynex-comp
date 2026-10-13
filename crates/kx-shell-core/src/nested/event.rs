@@ -16,7 +16,7 @@ use smithay::backend::input::{
 };
 use smithay::backend::renderer::Color32F;
 use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{WinitEvent, WinitEventLoop, WinitGraphicsBackend, WinitInput};
 use smithay::desktop::WindowSurfaceType;
@@ -156,7 +156,9 @@ impl NestedLoopState {
                 )
             });
 
+        let mut grabbed = false;
         if let Some(pointer) = self.state.seat.get_pointer() {
+            grabbed = pointer.is_grabbed();
             pointer.motion(
                 &mut self.state,
                 under,
@@ -167,7 +169,28 @@ impl NestedLoopState {
                 },
             );
             pointer.frame(&mut self.state);
+            grabbed = grabbed || pointer.is_grabbed();
         }
+
+        if grabbed {
+            self.backend.window().request_redraw();
+        } else {
+            let hit = crate::decoration::find_window_hit_test(&self.state, self.pointer_location);
+            let icon = hit
+                .as_ref()
+                .and_then(|(_, h)| crate::decoration::cursor_icon_for_hit_test(h))
+                .unwrap_or(smithay::reexports::winit::window::CursorIcon::Default);
+            self.backend.window().set_cursor(icon);
+        }
+    }
+
+    fn handle_decoration_click(&mut self, button: u32, serial: smithay::utils::Serial) -> bool {
+        crate::decoration::handle_decoration_click(
+            &mut self.state,
+            self.pointer_location,
+            button,
+            serial,
+        )
     }
 
     fn handle_pointer_button(&mut self, event: &impl PointerButtonEvent<WinitInput>) {
@@ -182,7 +205,9 @@ impl NestedLoopState {
                 self.pointer_location,
                 button,
                 serial,
-            ) {
+            ) || self.handle_decoration_click(button, serial)
+            {
+                self.backend.window().request_redraw();
                 return;
             }
 
@@ -211,6 +236,8 @@ impl NestedLoopState {
             );
             pointer.frame(&mut self.state);
         }
+
+        self.backend.window().request_redraw();
     }
 
     fn handle_pointer_axis(&mut self, event: &impl PointerAxisEvent<WinitInput>) {
@@ -288,17 +315,18 @@ impl NestedLoopState {
             .map_err(|e| ShellError::ClientDispatch(e.to_string()))?;
 
         let buffer_age = self.backend.buffer_age().unwrap_or(0);
+        let ssd_elements = crate::decoration::collect_ssd_render_elements(&self.state);
 
         let render_res = {
             let (renderer, mut framebuffer) = self.backend.bind()?;
-            render_output::<_, WaylandSurfaceRenderElement<GlesRenderer>, _, _>(
+            render_output::<_, SolidColorRenderElement, _, _>(
                 &self.state.output,
                 renderer,
                 &mut framebuffer,
                 1.0,
                 buffer_age,
                 [&self.state.space],
-                &[],
+                &ssd_elements,
                 &mut self.damage_tracker,
                 self.bg_color,
             )

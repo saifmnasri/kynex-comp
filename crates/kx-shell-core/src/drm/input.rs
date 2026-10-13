@@ -162,7 +162,9 @@ fn handle_pointer_button(
     let time = event.time_msec();
 
     if button_state == ButtonState::Pressed {
-        if crate::grab::try_start_compositor_grab(state, pointer_location, button, serial) {
+        if crate::grab::try_start_compositor_grab(state, pointer_location, button, serial)
+            || crate::decoration::handle_decoration_click(state, pointer_location, button, serial)
+        {
             return;
         }
 
