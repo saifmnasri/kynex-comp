@@ -489,13 +489,9 @@ impl WindowManager {
             self.unminimize_window(min_wid, usable_area);
             self.center_window(min_wid, usable_area);
             Some(min_wid)
-        } else if let Some(focused) = self.focus.focused() {
-            if ws_windows.contains(&focused) {
-                self.center_window(focused, usable_area);
-                Some(focused)
-            } else {
-                None
-            }
+        } else if let Some(focused) = self.focus.focused().filter(|f| ws_windows.contains(f)) {
+            self.center_window(focused, usable_area);
+            Some(focused)
         } else {
             None
         }
