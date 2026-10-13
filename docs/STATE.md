@@ -2,8 +2,9 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 2 — Real Hardware Backend (DRM/KMS) — CLOSED (Merged into main, tagged `phase-2-complete`)
-**Last updated:** 2026-10-12 — Phase 2 audit closure complete. All Critical and High audit findings resolved. Code hygiene verified across entire workspace (0 files > 500 lines, 0 production functions > 60 lines). Nested backend refactored into `crates/kx-shell-core/src/nested/`. Full verification gate passed: `just check` green (fmt, clippy `-D warnings`, nextest, cargo-deny), `cargo test --workspace --features fault-injection --locked` green, `cargo check --release` green. Phase 2 merged into `dev` and `main`, tagged `phase-2-complete`.
+**Current phase:** 3 — Window Management — IN PROGRESS
+**Last updated:** 2026-10-13 — Phase 3 window management UX enhancements (smooth dragging at native display refresh, 8px bidirectional border resize cursor icons, direct left-click border-drag resizing, and ADR-0026 titlebar buttons) implemented and live-verified with real applications (Terminal, Calculator, Firefox) over 6,667 frames with 0 errors. Merged to dev and main, pushed to origin. Full verification gate passed: `just check` green (fmt, clippy `-D warnings`, nextest 78 tests, cargo-deny), code hygiene verified (0 files > 500 lines, 0 production functions > 60 lines, `#![forbid(unsafe_code)]`).
+
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -107,13 +108,22 @@ The following hardware-dependent verification items are deferred until physical 
     - Bidirectional resize cursor icons (`NsResize`, `EwResize`, `NwseResize`, `NeswResize`) on 8px window border hover, plus direct left-click border-drag resizing and titlebar dragging.
     - Vblank-synchronized, damage-driven smooth window dragging natively adapting to display refresh rate via `request_redraw()`.
     - Maintained code hygiene limits: 0 files > 500 lines, 0 functions > 60 lines, `#![forbid(unsafe_code)]`, and `just check` green.
+    - Live interactive multi-app verification passed cleanly: 6,667 frames rendered across Terminal (`ptyxis`), GNOME Calculator, and Firefox, smooth 60+ FPS window dragging, border resize cursor changes, control buttons, and clean shutdown (exit code 0). Merged to `dev` (`98b6612`) and `main` (`ac9cced`), pushed to `origin`.
 
 ## Next
-- Conduct live testing of interactive window management UX fixes (smooth dragging, 8px border cursor change & resizing, titlebar button actions).
-- Phase 3 audit and closure gate:
-  - Code hygiene review across workspace (verify 0 files > 500 lines, 0 production functions > 60 lines).
-  - Security review of client-driven resize/move paths and quota boundaries.
-- Prepare for Phase 4 (Real-App Protocol Completeness).
+- Sub-phase 3F (Layer-Shell, Privilege Policy & XDG Activation):
+  - Client privilege identity caching from `/proc/<pid>/exe` at socket connection accept time (`[privilege.layer_shell_allow]`).
+  - `zwlr_layer_shell_v1` handler with `GlobalDispatch::can_view` filtering and exclusive zone margins.
+  - Multi-layer Z-order rendering (`Background` -> `Bottom` -> Windows -> `Top` -> Fullscreen -> `Overlay`).
+  - `xdg-activation-v1` with injectable `Clock` trait and token expiration.
+- Sub-phase 3G (Output Handling, Fullscreen & Rehoming):
+  - `wl_surface.enter` / `wl_surface.leave` output protocol events.
+  - Output-targeted fullscreen with decoration hiding and exclusive zone bypass.
+- Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate):
+  - Hostile-client test suite for toplevels and layer surfaces.
+  - Criterion benchmarks update in `benches/BASELINE.md`.
+  - Full audit and closure gate for Phase 3.
+
 
 
 ## Verify commands
