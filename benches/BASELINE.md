@@ -59,3 +59,24 @@ Target: `crates/kx-shell-core/benches/frame_pacing_bench.rs`
 - Rule 00 budget: frame production p99 CPU time $\le 4$ ms per frame at 60 Hz.
 - Actual frame clock state machine and telemetry overhead: $< 9$ ns per frame ($< 0.00025\%$ of the 4 ms budget).
 - Allocation-free ring-buffer (`[Duration; 64]`) on stack, satisfying Rule 00 and Rule 06.
+
+---
+
+## 4. `kx-layout` (Window Manager & Multi-Workspace Operations)
+
+Target: `crates/kx-layout/benches/layout_bench.rs`
+
+| Benchmark Target | Mean Latency | 95% Confidence Interval | Notes |
+|:---|:---|:---|:---|
+| `layout_operations/map_unmap_single_window` | **38.86 ns** | [36.51 ns, 41.31 ns] | Single window map and unmap lifecycle in `WindowManager` |
+| `layout_operations/map_20_windows_batch` | **1.7857 µs** | [1.7825 µs, 1.7893 µs] | Batch mapping 20 windows across cascading geometry and focus stack |
+| `layout_operations/map_200_windows_distributed` | **127.06 µs** | [126.56 µs, 127.59 µs] | Mapping 200 windows across 9 workspaces with workspace switches |
+| `layout_operations/switch_workspace_with_20_windows` | **73.54 ns** | [73.41 ns, 73.67 ns] | Workspace switch with 20 managed windows updating focus stack |
+
+### Budget Assessment
+- Main thread budget: $\le 1$ ms per continuous work item.
+- Batch mapping 20 windows: $\approx 1.79$ µs ($< 0.2\%$ of 1 ms work slice).
+- Large session load (200 windows across 9 workspaces): $\approx 127$ µs ($< 0.13$ ms, well under 1 ms).
+- Workspace switching with 20 windows: $\approx 73.5$ ns.
+- Conforms to Rule 00 and Rule 06 main-loop responsiveness constraints.
+

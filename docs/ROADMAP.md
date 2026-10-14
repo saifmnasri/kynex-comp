@@ -19,10 +19,10 @@ multi-monitor, hotplug, **emergency-exit key first**, systemd notify + watchdog 
 **Exit:** boots to a working session on a VM (virtio-gpu) and on one real laptop; unplug/replug monitor survives;
 suspend/resume survives; no root required; Rule 00 budget verified ($\le 4$ ms p99 render CPU time). All exit criteria met.
 
-## Phase 3 — Window management
+## Phase 3 — Window management — COMPLETE
 Window abstraction, workspaces, floating layout, focus policy, move/resize, popups and grabs, `xdg-decoration`
 (server-side decorations), `layer-shell`, `xdg-activation`, fullscreen/maximize/minimize, multi-output windows.
-**Exit:** daily-usable floating desktop; layout property tests pass; windows never become unreachable after hotplug.
+**Exit:** daily-usable floating desktop; layout property tests pass; windows never become unreachable after hotplug. All exit criteria met. Hostile-client test suite passed. Benchmarks established in `benches/BASELINE.md`.
 
 ## Phase 4 — Real-app protocol completeness
 `linux-dmabuf` (+feedback), explicit sync, `fractional-scale`, `viewporter`, `cursor-shape`, pointer constraints,
