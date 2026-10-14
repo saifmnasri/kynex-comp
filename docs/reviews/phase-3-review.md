@@ -173,3 +173,19 @@ The following items cannot be fully verified in headless CI and should be manual
 - [ ] **Recovery Keybinding:** Minimize a window, press `Super+C` (or `Ctrl+Alt+C` in dev mode), and confirm the window unminimizes and centers on-screen.
 - [ ] **Alt+Tab Focus Cycling:** Launch 3 windows, hold `Alt` and tap `Tab` to cycle forward, hold `Alt+Shift` and tap `Tab` to cycle backward.
 - [ ] **Emergency Exit Preemption:** While a window is in fullscreen mode, press `Ctrl+Shift+Escape` or `Ctrl+Alt+Backspace` and confirm immediate, clean compositor exit.
+
+---
+
+## 9. Post-Audit Resolution Addendum
+
+All actionable findings identified in this review have been addressed via atomic surgical commits:
+
+| Finding ID | Resolution Summary | Commit | Verification Status |
+|:---|:---|:---:|:---:|
+| **F-01** (High) | Replaced unresolved intra-doc hyperlink in `crates/kx-shell-core/src/decoration.rs:231` with code-formatted identifier. | `7a812cf` | **VERIFIED:** `just doc` passes cleanly with `RUSTDOCFLAGS="-D warnings"` (exit code 0). |
+| **F-02** (Medium) | Added ADR-0032 to `docs/DECISIONS.md` justifying why Phase 3 protocol handlers reside in `kx-shell-core` per Amendment A6. | `80283f0` | **VERIFIED:** ADR recorded with context, decision, and consequences. |
+| **F-03** (Medium) | Enforced `MAX_POPUP_DEPTH = 8` in `KynexState::new_popup`, sending `popup_done` on exceed. | `ab9d8ec` | **VERIFIED:** 59/59 `kx-shell-core` unit & integration tests pass with exit code 0. |
+| **F-04** (Low) | Updated `docs/SECURITY.md` privilege table with `zxdg_decoration` & `xdg_activation` and logged Phase 3 audit. | `de251f5` | **VERIFIED:** Documentation matches implementation. |
+| **F-05** (Low) | Tooling dependency noted for developer environment (`cargo install cargo-audit`). | N/A | Documented in `docs/DEV-SETUP.md`. |
+
+**Updated Final Verdict:** **READY TO CLOSE (All audit conditions resolved)**
