@@ -381,7 +381,10 @@ impl XdgShellHandler for KynexState {
         while let Some(parent) = current_parent {
             depth += 1;
             if depth > MAX_POPUP_DEPTH {
-                tracing::warn!(depth, "Popup nesting depth exceeded limit; sending popup_done");
+                tracing::warn!(
+                    depth,
+                    "Popup nesting depth exceeded limit; sending popup_done"
+                );
                 surface.send_popup_done();
                 return;
             }
