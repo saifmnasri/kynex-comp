@@ -3,7 +3,7 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 3 — Window Management (CLOSED)
-**Last updated:** 2026-10-14 — Phase 3 (Window Management) completed and closed. Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate) fully verified with 5/5 hostile-client integration tests (`hostile_window_client.rs`: conflicting size constraints clamping, unsolicited configure flood disconnects, spoofed grab rejection, multibyte title/app_id string truncation, and rapid state churn survival) and `kx-layout` Criterion benchmarks recorded in `benches/BASELINE.md` (38.86 ns single map/unmap, 1.79 µs 20-window batch, 127 µs 200 windows across 9 workspaces, 73.5 ns workspace switch). Full verification gate green (`just check`, `cargo test --workspace --features fault-injection --locked`). Codebase stopped at Phase 3.
+**Last updated:** 2026-10-14 — Phase 3 (Window Management) completed, independently audited (`docs/reviews/phase-3-review.md`), and all findings F-01 through F-04 surgically resolved and verified. Verification suite 100% green (`just check`, `just doc`, `cargo check --release --locked`, `cargo test --workspace --features fault-injection --locked`). Codebase stopped at Phase 3.
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -113,6 +113,13 @@
     - Step 3H.2: Criterion benchmark for `kx-layout` in `crates/kx-layout/benches/layout_bench.rs` measuring single window map/unmap (38.86 ns), 20-window batch mapping (1.79 µs), 200 windows across 9 workspaces (127 µs), and workspace switching (73.5 ns).
     - Step 3H.3: Recorded Section 4 baseline in `benches/BASELINE.md` satisfying Rule 00 and Rule 06 budgets.
     - Step 3H.4: Full verification gate passed (`just check`, `cargo test --workspace --features fault-injection --locked`). Phase 3 exit criteria satisfied.
+  - **Phase 3 Independent Audit & Findings Closure — DONE:**
+    - Independent audit conducted and documented in `docs/reviews/phase-3-review.md`.
+    - F-01 (High): Resolved broken intra-doc link in `crates/kx-shell-core/src/decoration.rs:231` (now `just doc` passes with `RUSTDOCFLAGS="-D warnings"`).
+    - F-02 (Medium): Recorded ADR-0032 in `docs/DECISIONS.md` documenting rationale for retaining Phase 3 protocol handlers in `kx-shell-core` and Phase 4/6 extraction roadmap.
+    - F-03 (Medium): Bounded popup nesting depth to `MAX_POPUP_DEPTH = 8` in `KynexState::new_popup` (`crates/kx-shell-core/src/state.rs:376`), rejecting recursive cascades via `surface.send_popup_done()` per Rules 04/05.
+    - F-04 (Low): Updated `docs/SECURITY.md` privilege table classifying `zxdg_decoration_manager_v1` and `xdg_activation_v1` as Public, and added Phase 3 security review log entry.
+    - Post-audit resolution addendum recorded in `docs/reviews/phase-3-review.md`. Verification suite 100% green. Phase 3 exit criteria satisfied.
 
 ## Pending-hardware items (Phase 2)
 The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
