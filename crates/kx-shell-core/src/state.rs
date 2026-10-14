@@ -374,6 +374,27 @@ impl XdgShellHandler for KynexState {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+        // Enforce anti-DoS popup nesting depth bound per Rule 04/05
+        const MAX_POPUP_DEPTH: usize = 8;
+        let mut depth = 0;
+        let mut current_parent = surface.get_parent_surface();
+        while let Some(parent) = current_parent {
+            depth += 1;
+            if depth > MAX_POPUP_DEPTH {
+                tracing::warn!(depth, "Popup nesting depth exceeded limit; sending popup_done");
+                surface.send_popup_done();
+                return;
+            }
+            if let Some(parent_popup) = self.popups.find_popup(&parent) {
+                current_parent = match parent_popup {
+                    PopupKind::Xdg(ref p) => p.get_parent_surface(),
+                    PopupKind::InputMethod(_) => None,
+                };
+            } else {
+                break;
+            }
+        }
+
         if let Err(err) = self.popups.track_popup(PopupKind::from(surface.clone())) {
             tracing::warn!(?err, "Failed to track popup in popup manager");
             return;
