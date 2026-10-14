@@ -2,8 +2,8 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 4 — Real-App Protocol Completeness — IN PROGRESS
-**Last updated:** 2026-10-14 — Phase 3 (Window Management) completed and closed. Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate) fully verified with 5/5 hostile-client integration tests (`hostile_window_client.rs`: conflicting size constraints clamping, unsolicited configure flood disconnects, spoofed grab rejection, multibyte title/app_id string truncation, and rapid state churn survival) and `kx-layout` Criterion benchmarks recorded in `benches/BASELINE.md` (38.86 ns single map/unmap, 1.79 µs 20-window batch, 127 µs 200 windows across 9 workspaces, 73.5 ns workspace switch). Full verification gate green (`just check`, `cargo test --workspace --features fault-injection --locked`). Phase 4 initiated.
+**Current phase:** 3 — Window Management (CLOSED)
+**Last updated:** 2026-10-14 — Phase 3 (Window Management) completed and closed. Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate) fully verified with 5/5 hostile-client integration tests (`hostile_window_client.rs`: conflicting size constraints clamping, unsolicited configure flood disconnects, spoofed grab rejection, multibyte title/app_id string truncation, and rapid state churn survival) and `kx-layout` Criterion benchmarks recorded in `benches/BASELINE.md` (38.86 ns single map/unmap, 1.79 µs 20-window batch, 127 µs 200 windows across 9 workspaces, 73.5 ns workspace switch). Full verification gate green (`just check`, `cargo test --workspace --features fault-injection --locked`). Codebase stopped at Phase 3.
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -123,9 +123,7 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- **Phase 4 (Real-App Protocol Completeness):**
-  - Branch: `feat/phase-4-protocols`
-  - Milestone 4A: Buffer management & explicit sync (`linux-dmabuf` v4 feedback, `linux-drm-syncobj`).
+- None — Phase 3 (Window Management) completed and closed; stopped at Phase 3.
 
 ## Next
 - **Milestone 4A (Buffer Management & Explicit Sync):**
