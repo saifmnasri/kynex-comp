@@ -228,7 +228,7 @@ impl XdgDecorationHandler for KynexState {
     }
 }
 
-/// Converts internal layout [`ResizeEdge`] to Wayland protocol [`xdg_toplevel::ResizeEdge`].
+/// Converts internal layout [`ResizeEdge`] to Wayland protocol `xdg_toplevel::ResizeEdge`.
 #[must_use]
 pub fn to_xdg_resize_edge(
     edge: ResizeEdge,
