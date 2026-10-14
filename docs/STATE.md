@@ -2,9 +2,8 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 3 — Window Management — IN PROGRESS
-**Last updated:** 2026-10-14 — Sub-phase 3G (Output Handling, Fullscreen & Rehoming) completed and verified with `output_handling` integration test suite. Multi-output tracking with saturating overlap arithmetic, output-targeted fullscreen with SSD suppression (ADR-0029), and dynamic output unplug rehoming (ADR-0030) verified. Sub-phase 3H (Hostile Client Suite & Phase 3 Closure Gate) in progress. Full verification gate passed (`just check` green, tests green, cargo-deny green).
-
+**Current phase:** 4 — Real-App Protocol Completeness — IN PROGRESS
+**Last updated:** 2026-10-14 — Phase 3 (Window Management) completed and closed. Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate) fully verified with 5/5 hostile-client integration tests (`hostile_window_client.rs`: conflicting size constraints clamping, unsolicited configure flood disconnects, spoofed grab rejection, multibyte title/app_id string truncation, and rapid state churn survival) and `kx-layout` Criterion benchmarks recorded in `benches/BASELINE.md` (38.86 ns single map/unmap, 1.79 µs 20-window batch, 127 µs 200 windows across 9 workspaces, 73.5 ns workspace switch). Full verification gate green (`just check`, `cargo test --workspace --features fault-injection --locked`). Phase 4 initiated.
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -60,18 +59,7 @@
     - Decomposed `crates/kx-shell-core/src/nested.rs` into `nested/mod.rs` and `nested/event.rs`.
     - Refactored `kynex-comp/src/main.rs` and `kx-shell-core/src/drm/output.rs`.
     - Strict verification: 0 files > 500 lines, 0 production functions > 60 lines across the workspace.
-
-## Pending-hardware items (Phase 2)
-The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
-1. **Bare-metal multi-monitor output testing:** Verification with physical HDMI / DisplayPort / DisplayPort MST daisy chains on discrete AMD, NVIDIA, and Intel GPUs (in addition to the virtualized DRM connectors verified in UTM/QEMU).
-2. **Hardware direct scanout & overlay plane assignment:** Verification of zero-copy direct scanout and video overlay plane assignments on physical atomic KMS plane hardware controllers.
-3. **Bare-metal ACPI lid & power events:** Physical laptop lid switch state changes and hardware ACPI sleep/suspend/resume power cycle transitions.
-4. **Physical Variable Refresh Rate (VRR / Adaptive-Sync):** Verification of dynamic vblank timing and tearing prevention on physical FreeSync / G-Sync compatible displays.
-5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
-
-## In progress
-- **Phase 3 (Window Management):**
-  - Branch: `feat/phase-3-window-management` (from `dev`).
+- **Phase 3 (Window Management) — CLOSED:**
   - **Sub-phase 3A (Architecture & ADRs) — DONE:**
     - Step 3A.1: Architecture decisions ADR-0024 through ADR-0030 recorded in `docs/DECISIONS.md`. Implementation plan approved.
   - **Sub-phase 3B (Pure-Logic Layout Engine `kx-layout`) — DONE:**
@@ -100,37 +88,63 @@ The following hardware-dependent verification items are deferred until physical 
     - Verified nested compositor live execution with real desktop apps (`ptyxis`/`weston-terminal`, `gnome-calculator` GTK4, and `firefox`) running simultaneously on `wayland-1`.
     - Live multi-app session telemetry: 18,389 frames rendered over ~100s across apps (`ptyxis`/`weston-terminal`, `gnome-calculator`, `firefox`), smooth event dispatch, zero missed vblanks or panics, and clean shutdown (exit status 0) triggered via emergency quit shortcut.
     - Cleaned up temporary test bindings, retaining standard emergency shortcuts (`Ctrl+Shift+Escape`, `Ctrl+Alt+Backspace`, `Ctrl+Shift+Q`).
-    - Merged `feat/phase-3-window-management` into `dev` and `main`, pushed to origin.
   - **Window Management UX & Interaction Enhancements — DONE:**
-    - Branch: `feat/window-management-ux-fixes`
     - Pure-logic window decoration geometry, hit-testing, and border detection in `crates/kx-layout/src/decoration.rs` with 20 unit tests.
     - Implemented `zxdg_decoration_manager_v1` negotiation (`XdgDecorationHandler`, `XdgDecorationState`) and SolidColor titlebar + control buttons (close, maximize/restore, minimize) rendering in `crates/kx-shell-core/src/decoration.rs`.
     - Bidirectional resize cursor icons (`NsResize`, `EwResize`, `NwseResize`, `NeswResize`) on 8px window border hover, plus direct left-click border-drag resizing and titlebar dragging.
     - Vblank-synchronized, damage-driven smooth window dragging natively adapting to display refresh rate via `request_redraw()`.
     - Maintained code hygiene limits: 0 files > 500 lines, 0 functions > 60 lines, `#![forbid(unsafe_code)]`, and `just check` green.
-    - Live interactive multi-app verification passed cleanly: 6,667 frames rendered across Terminal (`ptyxis`), GNOME Calculator, and Firefox, smooth 60+ FPS window dragging, border resize cursor changes, control buttons, and clean shutdown (exit code 0). Merged to `dev` (`98b6612`) and `main` (`ac9cced`), pushed to `origin`.
+    - Live interactive multi-app verification passed cleanly: 6,667 frames rendered across Terminal (`ptyxis`), GNOME Calculator, and Firefox, smooth 60+ FPS window dragging, border resize cursor changes, control buttons, and clean shutdown (exit code 0).
   - **Sub-phase 3F (Layer-Shell, Privilege Policy & XDG Activation) — DONE:**
-    - Branch: `feat/phase-3f-layer-shell`
     - Step 3F.1: Privileged configuration schema in `kx-config` (`[privilege.layer_shell_allow]` allow-list) with validation and unit tests (`b019290`).
     - Step 3F.2: Client credentials caching (`SO_PEERCRED` and `/proc/<pid>/exe` resolution) and layer shell policy enforcement in `kx-shell-core` (`1faed8e`).
     - Step 3F.3: Filtered `zwlr_layer_shell_v1` global (`GlobalDispatch::can_view`), per-client layer surface quota limits (`max_layer_surfaces = 8`), and exclusive zone margin recalculation updating `WindowManager::set_exclusive_margins` (`b25b83a`).
     - Step 3F.4: Multi-layer Z-order rendering in `Space` & `GlesRenderer`: `Background` -> `Bottom` -> Windows -> `Top` -> Fullscreen -> `Overlay`.
     - Step 3F.5: `xdg-activation-v1` token protocol handler (`XdgActivationState`, `XdgActivationHandler`) with token creation, quota bounding (`max_tokens = 32`), 30s TTL expiry, and focus transfer to target surface (`f5e489f`).
     - Step 3F.6: Comprehensive integration test suite in `crates/kx-shell-core/tests/layer_shell_client.rs` verifying authorized client lifecycle, global filtering for unauthorized clients, quota exhaustion disconnection, and quota reclamation upon surface destruction (`9ee6718`).
-
   - **Sub-phase 3G (Output Handling, Fullscreen & Rehoming) — DONE:**
-    - Branch: `feat/phase-3g-output-handling`
     - Step 3G.1: Multi-output tracking and overlap area calculation using saturating arithmetic in `primary_output_for_window`, correctly selecting best output for windows spanning multiple displays.
     - Step 3G.2: Output-targeted fullscreening via `xdg_toplevel::set_fullscreen(target_output)` spanning target output dimensions and bypassing exclusive zones per ADR-0029.
     - Step 3G.3: Automatic SSD decoration suppression (`collect_ssd_render_elements`) and resize border hit-test suppression (`find_window_hit_test` returning `DecorationHitTest::Content`) for fullscreen windows.
     - Step 3G.4: Output unplugging and dynamic window rehoming in `migrate_windows_from_unplugged` synchronizing authoritative `WindowManager` geometry and `Space` projections per ADR-0030.
     - Step 3G.5: Integration test suite in `crates/kx-shell-core/tests/output_handling.rs` with in-process test client verifying output overlap calculation, targeted fullscreen with SSD suppression, and unplug migration.
+  - **Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate) — DONE:**
+    - Step 3H.1: Hostile-client test suite in `crates/kx-shell-core/tests/hostile_window_client.rs` with 5 scenarios: conflicting size constraints clamped safely, unsolicited configure serial flood disconnected with protocol error 4 on `xdg_wm_base`, spoofed move/resize grabs rejected, multibyte UTF-8 title/app_id string flood safely truncated to $\le 4096$ bytes, rapid state churn (maximize, fullscreen, minimize) cleanly handled.
+    - Step 3H.2: Criterion benchmark for `kx-layout` in `crates/kx-layout/benches/layout_bench.rs` measuring single window map/unmap (38.86 ns), 20-window batch mapping (1.79 µs), 200 windows across 9 workspaces (127 µs), and workspace switching (73.5 ns).
+    - Step 3H.3: Recorded Section 4 baseline in `benches/BASELINE.md` satisfying Rule 00 and Rule 06 budgets.
+    - Step 3H.4: Full verification gate passed (`just check`, `cargo test --workspace --features fault-injection --locked`). Phase 3 exit criteria satisfied.
+
+## Pending-hardware items (Phase 2)
+The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
+1. **Bare-metal multi-monitor output testing:** Verification with physical HDMI / DisplayPort / DisplayPort MST daisy chains on discrete AMD, NVIDIA, and Intel GPUs (in addition to the virtualized DRM connectors verified in UTM/QEMU).
+2. **Hardware direct scanout & overlay plane assignment:** Verification of zero-copy direct scanout and video overlay plane assignments on physical atomic KMS plane hardware controllers.
+3. **Bare-metal ACPI lid & power events:** Physical laptop lid switch state changes and hardware ACPI sleep/suspend/resume power cycle transitions.
+4. **Physical Variable Refresh Rate (VRR / Adaptive-Sync):** Verification of dynamic vblank timing and tearing prevention on physical FreeSync / G-Sync compatible displays.
+5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
+
+## In progress
+- **Phase 4 (Real-App Protocol Completeness):**
+  - Branch: `feat/phase-4-protocols`
+  - Milestone 4A: Buffer management & explicit sync (`linux-dmabuf` v4 feedback, `linux-drm-syncobj`).
 
 ## Next
-- Sub-phase 3H (Hostile-Client Suite & Phase 3 Closure Gate):
-  - Hostile-client test suite for toplevels, layer surfaces, and malformed configure/resize requests.
-  - Criterion benchmarks update in `benches/BASELINE.md`.
-  - Phase 3 security review and closure gate.
+- **Milestone 4A (Buffer Management & Explicit Sync):**
+  - Step 4A.1: `linux-dmabuf` protocol handler with v4 format table advertising and tranches feedback.
+  - Step 4A.2: Explicit synchronization via `linux-drm-syncobj` protocol.
+- **Milestone 4B (Scaling & Viewport Transformation):**
+  - Step 4B.1: `wp_viewporter` implementation for cropped/scaled video buffers and games.
+  - Step 4B.2: `wp_fractional_scale_v1` protocol for fractional display scales (e.g. 1.25x, 1.5x).
+- **Milestone 4C (Cursor & Pointer Control):**
+  - Step 4C.1: `wp_cursor_shape_v1` server-side cursor shapes.
+  - Step 4C.2: `zwp_pointer_constraints_v1` (confined and locked pointer for games/FPS).
+  - Step 4C.3: `zwp_relative_pointer_v1` for unaccelerated high-precision mouse input.
+- **Milestone 4D (Text Input & IME):**
+  - Step 4D.1: `zwp_text_input_v3` and `zwp_input_method_v2` for input methods.
+- **Milestone 4E (Session Control & Telemetry):**
+  - Step 4E.1: `ext_session_lock_v1` session locking protocol (fail-closed per Rule 05).
+  - Step 4E.2: `ext_foreign_toplevel_list_v1` for taskbars and pagers.
+  - Step 4E.3: `wp_presentation_time` feedback with real vblank timestamps.
+  - Step 4E.4: `zwp_idle_inhibit_v1` and `ext_idle_notify_v1`.
 
 ## Verify commands
 - `just check`
@@ -138,8 +152,11 @@ The following hardware-dependent verification items are deferred until physical 
 - `cargo test -p kx-shell-core --test xdg_shell_client`
 - `cargo test -p kx-shell-core --test interactive_grab`
 - `cargo test -p kx-shell-core --test layer_shell_client`
+- `cargo test -p kx-shell-core --test output_handling`
+- `cargo test -p kx-shell-core --test hostile_window_client`
 - `cargo test --workspace --features fault-injection --locked`
 - `cargo check --release`
 - `cargo run -p kynex-comp -- --backend nested --exit-after 2s`
+
 
 
