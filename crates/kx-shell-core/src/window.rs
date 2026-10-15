@@ -26,19 +26,29 @@ use smithay::output::Output;
 #[must_use]
 pub fn output_usable_geometry(state: &KynexState, output: &Output) -> WindowGeometry {
     state.space.output_geometry(output).map_or_else(
-        || WindowGeometry::new(0, 0, 1280, 720),
+        || {
+            let mode_size = output
+                .current_mode()
+                .map_or_else(|| (1280, 720).into(), |m| m.size);
+            WindowGeometry::new(0, 0, mode_size.w, mode_size.h)
+        },
         |geo| {
-            let layer_map = layer_map_for_output(output);
-            let zone = layer_map.non_exclusive_zone();
-            if zone.size.w > 0 && zone.size.h > 0 {
-                WindowGeometry::new(
-                    geo.loc.x.saturating_add(zone.loc.x),
-                    geo.loc.y.saturating_add(zone.loc.y),
-                    zone.size.w,
-                    zone.size.h,
-                )
-            } else {
+            let mut layer_map = layer_map_for_output(output);
+            if layer_map.layers().next().is_none() {
                 WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h)
+            } else {
+                layer_map.arrange();
+                let zone = layer_map.non_exclusive_zone();
+                if zone.size.w > 0 && zone.size.h > 0 {
+                    WindowGeometry::new(
+                        geo.loc.x.saturating_add(zone.loc.x),
+                        geo.loc.y.saturating_add(zone.loc.y),
+                        zone.size.w,
+                        zone.size.h,
+                    )
+                } else {
+                    WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h)
+                }
             }
         },
     )

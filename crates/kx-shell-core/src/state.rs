@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowId, WindowManager};
+use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowGeometry, WindowId, WindowManager};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::desktop::{PopupManager, Space, Window};
 use smithay::input::keyboard::XkbConfig;
@@ -215,13 +215,41 @@ impl KynexState {
     }
 
     /// Updates the output geometry when the nested window is resized.
-    pub fn update_output_size(&self, new_size: Size<i32, Physical>) {
+    pub fn update_output_size(&mut self, new_size: Size<i32, Physical>) {
         let mode = Mode {
             size: new_size,
             refresh: 60_000,
         };
         self.output
             .change_current_state(Some(mode), None, None, None);
+        self.space.refresh();
+
+        smithay::desktop::layer_map_for_output(&self.output).arrange();
+
+        let usable_area = crate::window::output_usable_geometry(self, &self.output);
+        let output_geo = self.space.output_geometry(&self.output).map_or_else(
+            || WindowGeometry::new(0, 0, new_size.w, new_size.h),
+            |geo| WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h),
+        );
+        self.window_manager.arrange(output_geo, usable_area);
+
+        for (&wid, window) in &self.window_map {
+            if let Some(win_data) = self.window_manager.window(wid) {
+                if win_data.state == kx_layout::WindowState::Maximized
+                    || win_data.state == kx_layout::WindowState::Fullscreen
+                {
+                    if let Some(toplevel) = window.toplevel() {
+                        toplevel.with_pending_state(|toplevel_state| {
+                            toplevel_state.size =
+                                Some((win_data.geometry.width, win_data.geometry.height).into());
+                        });
+                        toplevel.send_configure();
+                    }
+                }
+            }
+        }
+
+        crate::window::sync_layout_to_space(self);
     }
 
     /// Maps an additional display output into the compositor's global space.
