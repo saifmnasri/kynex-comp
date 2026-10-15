@@ -3,10 +3,12 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 4 — Real-App Protocol Completeness (Milestone 4D: Text Input & IME)
-**Last updated:** 2026-10-15 — Milestone 4C complete (Steps 4C.1 `wp_cursor_shape_v1`, 4C.2 `zwp_pointer_constraints_v1`, and 4C.3 `zwp_relative_pointer_v1`) on `feat/phase-4c-cursor-pointer`. Full verification gate green (`just check`, `just doc`). Advancing to Milestone 4D (`zwp_text_input_v3`, `zwp_input_method_v2`).
+**Last updated:** 2026-10-15 — Step 4D.1 (`zwp_text_input_v3`) completed on `feat/phase-4d-text-input`. Full verification gate green (`just check`, tests passing). Advancing to Step 4D.2 (`zwp_input_method_v2`).
 
 ## Done
 - **Phase 4 (Real-App Protocol Completeness):**
+  - **Milestone 4D (Text Input & IME):**
+    - Step 4D.1: Server-side text input protocol handler in `crates/kx-shell-core/src/text_input.rs` (`zwp_text_input_manager_v3` and `zwp_text_input_v3`) implementing `init_text_input_global`, `delegate_text_input_manager!(KynexState)`, `SeatHandler::focus_changed` forwarding to `seat.text_input()` (`leave()`, `set_focus()`, `enter()`), `docs/SECURITY.md` table update (Public global), and integration tests in `crates/kx-shell-core/tests/text_input_client.rs` verifying global advertisement, version 1 binding, lifecycle requests (enable, set_surrounding_text, set_cursor_rectangle, commit, disable, destroy), and focus enter/leave event delivery.
   - **Milestone 4C (Cursor & Pointer Control) — DONE:**
     - Step 4C.1: Server-side cursor shape protocol handler in `crates/kx-shell-core/src/cursor_shape.rs` (`wp_cursor_shape_manager_v1` and `wp_cursor_shape_device_v1`) implementing `init_cursor_shape_global`, `CursorShapeHandler`, `delegate_cursor_shape!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/cursor_shape_client.rs` verifying global advertisement, version 1 binding, shape setting request dispatch, and clean destroy lifecycle.
     - Step 4C.2: Pointer constraints protocol handler in `crates/kx-shell-core/src/pointer_constraints.rs` (`zwp_pointer_constraints_v1`, `ZwpLockedPointerV1`, and `ZwpConfinedPointerV1`) implementing `init_pointer_constraints_global`, `PointerConstraintsHandler`, `delegate_pointer_constraints!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/pointer_constraints_client.rs` verifying global advertisement, version 1 binding, locked pointer creation and destroy, and confined pointer creation and destroy.
@@ -144,11 +146,9 @@ The following hardware-dependent verification items are deferred until physical 
 
 ## In progress
 - **Milestone 4D (Text Input & IME):**
-  - Step 4D.1: `zwp_text_input_v3` for client text input.
+  - Step 4D.2: `zwp_input_method_v2` for input methods (Privileged, allow-list gated).
 
 ## Next
-- **Milestone 4D (Text Input & IME):**
-  - Step 4D.2: `zwp_input_method_v2` for input methods.
 - **Milestone 4E (Session Control & Telemetry):**
   - Step 4E.1: `ext_session_lock_v1` session locking protocol (fail-closed per Rule 05).
   - Step 4E.2: `ext_foreign_toplevel_list_v1` for taskbars and pagers.
@@ -157,6 +157,7 @@ The following hardware-dependent verification items are deferred until physical 
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-shell-core --test text_input_client`
 - `cargo test -p kx-shell-core --test cursor_shape_client`
 - `cargo test -p kx-shell-core --test pointer_constraints_client`
 - `cargo test -p kx-shell-core --test relative_pointer_client`

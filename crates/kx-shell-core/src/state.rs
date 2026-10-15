@@ -93,6 +93,8 @@ pub struct KynexState {
     pub pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
     /// Relative pointer protocol state (`zwp_relative_pointer_v1`).
     pub relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
+    /// Text input manager protocol state (`zwp_text_input_v3`).
+    pub text_input_state: smithay::wayland::text_input::TextInputManagerState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -145,6 +147,7 @@ impl KynexState {
         let pointer_constraints_state =
             crate::pointer_constraints::init_pointer_constraints_global(dh);
         let relative_pointer_state = crate::relative_pointer::init_relative_pointer_global(dh);
+        let text_input_state = crate::text_input::init_text_input_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -174,6 +177,7 @@ impl KynexState {
             cursor_shape_manager_state,
             pointer_constraints_state,
             relative_pointer_state,
+            text_input_state,
             config,
         })
     }
@@ -415,7 +419,13 @@ impl SeatHandler for KynexState {
         &mut self.seat_state
     }
 
-    fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
+    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+        use smithay::wayland::text_input::TextInputSeat;
+        let text_input = seat.text_input();
+        text_input.leave();
+        text_input.set_focus(focused.cloned());
+        text_input.enter();
+    }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         self.cursor_status = image;

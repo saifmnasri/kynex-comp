@@ -24,6 +24,7 @@ pub mod pointer_constraints;
 pub mod relative_pointer;
 pub mod state;
 pub mod syncobj;
+pub mod text_input;
 pub mod viewporter;
 pub mod window;
 pub mod xdg_shell;
@@ -54,4 +55,5 @@ pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_po
 pub use relative_pointer::init_relative_pointer_global;
 pub use state::KynexState;
 pub use syncobj::init_drm_syncobj_global;
+pub use text_input::init_text_input_global;
 pub use viewporter::init_viewporter_global;
