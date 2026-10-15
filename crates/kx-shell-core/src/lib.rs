@@ -20,6 +20,7 @@ pub mod frame_clock;
 pub mod grab;
 pub mod layer_shell;
 pub mod nested;
+pub mod pointer_constraints;
 pub mod state;
 pub mod syncobj;
 pub mod viewporter;
@@ -48,6 +49,7 @@ pub use grab::{
     try_start_compositor_grab,
 };
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
+pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
 pub use state::KynexState;
 pub use syncobj::init_drm_syncobj_global;
 pub use viewporter::init_viewporter_global;

@@ -89,6 +89,8 @@ pub struct KynexState {
         smithay::wayland::fractional_scale::FractionalScaleManagerState,
     /// Cursor shape protocol state (`wp_cursor_shape_v1`).
     pub cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
+    /// Pointer constraints protocol state (`zwp_pointer_constraints_v1`).
+    pub pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -138,6 +140,8 @@ impl KynexState {
         let fractional_scale_manager_state =
             crate::fractional_scale::init_fractional_scale_global(dh);
         let cursor_shape_manager_state = crate::cursor_shape::init_cursor_shape_global(dh);
+        let pointer_constraints_state =
+            crate::pointer_constraints::init_pointer_constraints_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -165,6 +169,7 @@ impl KynexState {
             viewporter_state,
             fractional_scale_manager_state,
             cursor_shape_manager_state,
+            pointer_constraints_state,
             config,
         })
     }

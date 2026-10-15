@@ -7,7 +7,7 @@ Authoritative rules: `.agents/rules/05-security.md`. This file records the threa
 | Global / IPC command | Class | Who may use it | Consent needed |
 |----------------------|-------|----------------|----------------|
 | `wl_compositor`, `wl_shm`, `xdg_wm_base`, `zxdg_decoration_manager_v1`, `xdg_activation_v1`, `zwp_linux_dmabuf_v1`, `zwp_linux_dmabuf_feedback_v1`, `wp_linux_drm_syncobj_manager_v1`, `wp_viewporter`, `wp_fractional_scale_manager_v1`, `wp_cursor_shape_manager_v1` | Public | any client | no |
-| `zwlr_layer_shell_v1`, idle-inhibit, foreign-toplevel list | Restricted | allow-listed or shell clients | no |
+| `zwlr_layer_shell_v1`, `zwp_pointer_constraints_v1` (focus gated), idle-inhibit, foreign-toplevel list | Restricted | allow-listed or shell clients / active focus | no |
 | screencopy / image-copy-capture | Privileged | portal backend only | yes (portal prompt) |
 | data-control, virtual input, output-management, input-method, gamma | Privileged | allow-listed executables only | policy |
 | `ext_session_lock_v1` | Privileged | lock client only; fail closed | policy |
