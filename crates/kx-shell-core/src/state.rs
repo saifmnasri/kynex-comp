@@ -91,6 +91,8 @@ pub struct KynexState {
     pub cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
     /// Pointer constraints protocol state (`zwp_pointer_constraints_v1`).
     pub pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
+    /// Relative pointer protocol state (`zwp_relative_pointer_v1`).
+    pub relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -142,6 +144,7 @@ impl KynexState {
         let cursor_shape_manager_state = crate::cursor_shape::init_cursor_shape_global(dh);
         let pointer_constraints_state =
             crate::pointer_constraints::init_pointer_constraints_global(dh);
+        let relative_pointer_state = crate::relative_pointer::init_relative_pointer_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -170,6 +173,7 @@ impl KynexState {
             fractional_scale_manager_state,
             cursor_shape_manager_state,
             pointer_constraints_state,
+            relative_pointer_state,
             config,
         })
     }

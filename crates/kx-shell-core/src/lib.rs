@@ -21,6 +21,7 @@ pub mod grab;
 pub mod layer_shell;
 pub mod nested;
 pub mod pointer_constraints;
+pub mod relative_pointer;
 pub mod state;
 pub mod syncobj;
 pub mod viewporter;
@@ -50,6 +51,7 @@ pub use grab::{
 };
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
+pub use relative_pointer::init_relative_pointer_global;
 pub use state::KynexState;
 pub use syncobj::init_drm_syncobj_global;
 pub use viewporter::init_viewporter_global;
