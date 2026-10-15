@@ -23,7 +23,7 @@ xcursor.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 wayland-client.workspace = true
-wayland-protocols.workspace = true
+wayland-protocols = { workspace = true, features = ["staging"] }
 
 [[bench]]
 name = "frame_pacing_bench"

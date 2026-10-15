@@ -97,6 +97,12 @@ pub struct KynexState {
     pub text_input_state: smithay::wayland::text_input::TextInputManagerState,
     /// Input method manager protocol state (`zwp_input_method_v2`).
     pub input_method_state: smithay::wayland::input_method::InputMethodManagerState,
+    /// Wayland session lock protocol state (`ext_session_lock_v1`).
+    pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    /// Whether the session is currently locked.
+    pub is_session_locked: bool,
+    /// Active lock screen surfaces.
+    pub lock_surfaces: Vec<smithay::wayland::session_lock::LockSurface>,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -151,6 +157,7 @@ impl KynexState {
         let relative_pointer_state = crate::relative_pointer::init_relative_pointer_global(dh);
         let text_input_state = crate::text_input::init_text_input_global(dh);
         let input_method_state = crate::input_method::init_input_method_global(dh);
+        let session_lock_state = crate::session_lock::init_session_lock_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -182,6 +189,9 @@ impl KynexState {
             relative_pointer_state,
             text_input_state,
             input_method_state,
+            session_lock_state,
+            is_session_locked: false,
+            lock_surfaces: Vec::new(),
             config,
         })
     }

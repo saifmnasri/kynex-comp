@@ -64,6 +64,8 @@ pub struct ClientState {
     pub is_layer_shell_allowed: AtomicBool,
     /// Cached authorization decision for `zwp_input_method_manager_v2`.
     pub is_input_method_allowed: AtomicBool,
+    /// Cached authorization decision for `ext_session_lock_manager_v1`.
+    pub is_session_lock_allowed: AtomicBool,
 }
 
 impl Default for ClientState {
@@ -80,6 +82,7 @@ impl Default for ClientState {
             executable_path: Mutex::new(None),
             is_layer_shell_allowed: AtomicBool::new(false),
             is_input_method_allowed: AtomicBool::new(false),
+            is_session_lock_allowed: AtomicBool::new(false),
         }
     }
 }
@@ -154,6 +157,18 @@ impl ClientState {
             .store(allowed, Ordering::Release);
     }
 
+    /// Returns `true` if this client is authorized to bind `ext_session_lock_manager_v1`.
+    #[must_use]
+    pub fn is_session_lock_allowed(&self) -> bool {
+        self.is_session_lock_allowed.load(Ordering::Acquire)
+    }
+
+    /// Sets authorization for `ext_session_lock_manager_v1`.
+    pub fn set_session_lock_allowed(&self, allowed: bool) {
+        self.is_session_lock_allowed
+            .store(allowed, Ordering::Release);
+    }
+
     /// Inspects peer socket credentials and caches the authorization decision.
     pub fn inspect_and_cache_privilege(&self, creds: &Credentials, allow_list: &[String]) {
         let compositor_uid = smithay::reexports::rustix::process::getuid().as_raw();
@@ -165,6 +180,8 @@ impl ClientState {
         self.is_layer_shell_allowed
             .store(is_allowed, Ordering::Release);
         self.is_input_method_allowed
+            .store(is_allowed, Ordering::Release);
+        self.is_session_lock_allowed
             .store(is_allowed, Ordering::Release);
 
         if let Ok(mut exe_lock) = self.executable_path.lock() {
