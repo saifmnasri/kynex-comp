@@ -15,26 +15,22 @@ use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
-use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
-use smithay::utils::{Logical, Physical, Point, Serial, Size, Transform};
+use smithay::utils::{Logical, Physical, Point, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufState};
 use smithay::wayland::drm_syncobj::DrmSyncobjState;
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
+use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
-use smithay::wayland::shell::xdg::{
-    PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
-};
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::{
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_decoration,
-    delegate_xdg_shell,
 };
 
 use crate::client::ClientState;
@@ -91,6 +87,8 @@ pub struct KynexState {
     /// Fractional scale protocol state (`wp_fractional_scale_v1`).
     pub fractional_scale_manager_state:
         smithay::wayland::fractional_scale::FractionalScaleManagerState,
+    /// Cursor shape protocol state (`wp_cursor_shape_v1`).
+    pub cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -139,6 +137,7 @@ impl KynexState {
         let viewporter_state = crate::viewporter::init_viewporter_global(dh);
         let fractional_scale_manager_state =
             crate::fractional_scale::init_fractional_scale_global(dh);
+        let cursor_shape_manager_state = crate::cursor_shape::init_cursor_shape_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -165,6 +164,7 @@ impl KynexState {
             drm_syncobj_state,
             viewporter_state,
             fractional_scale_manager_state,
+            cursor_shape_manager_state,
             config,
         })
     }
@@ -389,94 +389,10 @@ impl OutputHandler for KynexState {
     fn output_bound(&mut self, _output: Output, _wl_output: WlOutput) {}
 }
 
-impl XdgShellHandler for KynexState {
-    fn xdg_shell_state(&mut self) -> &mut XdgShellState {
-        &mut self.xdg_shell_state
-    }
-
-    fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        crate::window::map_new_toplevel(self, &surface);
-    }
-
-    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
-        crate::window::handle_new_popup(self, &surface, positioner);
-    }
-
-    fn move_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial) {
-        crate::grab::handle_client_move_request(self, &surface, &seat, serial);
-    }
-
-    fn resize_request(
-        &mut self,
-        surface: ToplevelSurface,
-        seat: WlSeat,
-        serial: Serial,
-        edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
-    ) {
-        crate::grab::handle_client_resize_request(self, &surface, &seat, serial, edges);
-    }
-
-    fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
-
-    fn reposition_request(
-        &mut self,
-        surface: PopupSurface,
-        _positioner: PositionerState,
-        token: u32,
-    ) {
-        surface.send_repositioned(token);
-    }
-
-    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        crate::window::unmap_toplevel(self, &surface);
-    }
-
-    fn popup_destroyed(&mut self, _surface: PopupSurface) {
-        self.popups.cleanup();
-    }
-
-    fn maximize_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_maximize_request(self, &surface);
-    }
-
-    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_unmaximize_request(self, &surface);
-    }
-
-    fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<WlOutput>) {
-        crate::window::handle_fullscreen_request(self, &surface, output);
-    }
-
-    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_unfullscreen_request(self, &surface);
-    }
-
-    fn minimize_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_minimize_request(self, &surface);
-    }
-
-    fn ack_configure(
-        &mut self,
-        surface: WlSurface,
-        configure: smithay::wayland::shell::xdg::Configure,
-    ) {
-        crate::window::handle_ack_configure(self, &surface, configure);
-    }
-
-    fn title_changed(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_title_changed(self, &surface);
-    }
-
-    fn app_id_changed(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_app_id_changed(self, &surface);
-    }
-}
-
 delegate_compositor!(KynexState);
 delegate_shm!(KynexState);
 delegate_seat!(KynexState);
 delegate_output!(KynexState);
-delegate_xdg_shell!(KynexState);
 delegate_xdg_decoration!(KynexState);
 
 fn create_layer_shell_state(dh: &DisplayHandle) -> WlrLayerShellState {

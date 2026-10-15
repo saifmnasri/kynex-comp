@@ -9,6 +9,7 @@
 pub mod action;
 pub mod activation;
 pub mod client;
+pub mod cursor_shape;
 pub mod data_device;
 pub mod decoration;
 pub mod dmabuf;
@@ -23,12 +24,14 @@ pub mod state;
 pub mod syncobj;
 pub mod viewporter;
 pub mod window;
+pub mod xdg_shell;
 
 #[cfg(feature = "fault-injection")]
 pub mod fault;
 
 pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
 pub use client::{ClientLimits, ClientState};
+pub use cursor_shape::init_cursor_shape_global;
 pub use dmabuf::{MAX_DMABUF_DIMENSION, default_dmabuf_formats, init_dmabuf_global};
 pub use drm::{
     ConnectorInfo, DrmDeviceInfo, DrmDiagnosticReport, DrmOptions, DrmSession, ModeInfo, run_drm,
