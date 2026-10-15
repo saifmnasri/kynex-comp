@@ -2,10 +2,25 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 3 — Window Management (CLOSED)
-**Last updated:** 2026-10-14 — Phase 3 (Window Management) completed, independently audited (`docs/reviews/phase-3-review.md`), and all findings F-01 through F-04 surgically resolved and verified. Verification suite 100% green (`just check`, `just doc`, `cargo check --release --locked`, `cargo test --workspace --features fault-injection --locked`). Codebase stopped at Phase 3.
+**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4D: Text Input & IME)
+**Last updated:** 2026-10-15 — Step 4D.1 (`zwp_text_input_v3`) completed on `feat/phase-4d-text-input`. Full verification gate green (`just check`, tests passing). Advancing to Step 4D.2 (`zwp_input_method_v2`).
 
 ## Done
+- **Phase 4 (Real-App Protocol Completeness):**
+  - **Milestone 4D (Text Input & IME):**
+    - Step 4D.1: Server-side text input protocol handler in `crates/kx-shell-core/src/text_input.rs` (`zwp_text_input_manager_v3` and `zwp_text_input_v3`) implementing `init_text_input_global`, `delegate_text_input_manager!(KynexState)`, `SeatHandler::focus_changed` forwarding to `seat.text_input()` (`leave()`, `set_focus()`, `enter()`), `docs/SECURITY.md` table update (Public global), and integration tests in `crates/kx-shell-core/tests/text_input_client.rs` verifying global advertisement, version 1 binding, lifecycle requests (enable, set_surrounding_text, set_cursor_rectangle, commit, disable, destroy), and focus enter/leave event delivery.
+  - **Milestone 4C (Cursor & Pointer Control) — DONE:**
+    - Step 4C.1: Server-side cursor shape protocol handler in `crates/kx-shell-core/src/cursor_shape.rs` (`wp_cursor_shape_manager_v1` and `wp_cursor_shape_device_v1`) implementing `init_cursor_shape_global`, `CursorShapeHandler`, `delegate_cursor_shape!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/cursor_shape_client.rs` verifying global advertisement, version 1 binding, shape setting request dispatch, and clean destroy lifecycle.
+    - Step 4C.2: Pointer constraints protocol handler in `crates/kx-shell-core/src/pointer_constraints.rs` (`zwp_pointer_constraints_v1`, `ZwpLockedPointerV1`, and `ZwpConfinedPointerV1`) implementing `init_pointer_constraints_global`, `PointerConstraintsHandler`, `delegate_pointer_constraints!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/pointer_constraints_client.rs` verifying global advertisement, version 1 binding, locked pointer creation and destroy, and confined pointer creation and destroy.
+    - Step 4C.3: Relative pointer motions protocol handler in `crates/kx-shell-core/src/relative_pointer.rs` (`zwp_relative_pointer_manager_v1` and `ZwpRelativePointerV1`) implementing `init_relative_pointer_global`, `delegate_relative_pointer!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/relative_pointer_client.rs` verifying global advertisement, version 1 binding, relative pointer creation/destruction, and relative motion event delivery with dx/dy, dx_unaccel/dy_unaccel, and 64-bit microsecond timestamps.
+    - Live interactive multi-app session verification: 3,025 frames rendered across Ptyxis terminal, GNOME Calculator, and Firefox on `wayland-1`, smooth event dispatch, zero panics, clean shutdown (exit code 0) triggered via compositor action.
+    - Output Resize & Window Maximize Geometry Synchronization: Resolved window maximize clipping issue where windows in resized nested/DRM outputs retained stale margins (e.g. 907px width) due to unarranged `LayerMap::non_exclusive_zone()`. Updated `output_usable_geometry` to arrange layer maps and derive mode size dynamically, enhanced `update_output_size` to re-arrange `WindowManager`, reconfigure active maximized/fullscreen toplevels (`toplevel.send_configure()`), and synchronize `Space` locations (ADR-0033). Verified with integration test `test_output_resize_resizes_maximized_window` in `crates/kx-shell-core/tests/output_handling.rs`.
+  - **Milestone 4B (Scaling & Viewport Transformation) — DONE:**
+    - Step 4B.1: `wp_viewporter` protocol handler in `crates/kx-shell-core/src/viewporter.rs` implementing `init_viewporter_global`, `delegate_viewporter!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/viewporter_client.rs` verifying global advertisement, normal crop/destination lifecycle, hostile duplicate viewport rejection (`ViewportExists` error 0), invalid destination rejection (`BadValue` error 0), and invalid source coordinate rejection.
+    - Step 4B.2: Fractional scale protocol handler in `crates/kx-shell-core/src/fractional_scale.rs` (`wp_fractional_scale_manager_v1` and `wp_fractional_scale_v1`) implementing `init_fractional_scale_global`, preferred fractional scale reporting in units of 120ths (`preferred_scale`), dynamic scale updates (`update_surface_fractional_scale`), `FractionalScaleHandler` integration with `Output::current_scale().fractional_scale()`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/fractional_scale_client.rs` verifying global advertisement, preferred scale events (1.0x -> 120, 1.5x -> 180), clean destroy lifecycle, and hostile client duplicate `get_fractional_scale` rejection (`FractionalScaleExists` error 0).
+  - **Milestone 4A (Buffer Management & Explicit Sync) — DONE:**
+    - Step 4A.1: `linux-dmabuf` protocol handler in `crates/kx-shell-core/src/dmabuf.rs` (`zwp_linux_dmabuf_v1` and `zwp_linux_dmabuf_feedback_v1`) advertising version 4/5 format tables, linear modifiers for standard 32-bit formats (ARGB8888, XRGB8888, ABGR8888, XBGR8888), default device feedback tranches, plane count bounding ($1 \le \text{planes} \le 4$), dimension sanity checking ($0 < \text{dim} \le 16384$), and integration tests in `crates/kx-shell-core/tests/dmabuf_client.rs` verifying binding, feedback reception, and hostile client rejection with protocol errors.
+    - Step 4A.2: Explicit synchronization protocol via `linux-drm-syncobj` (`wp_linux_drm_syncobj_manager_v1`) in `crates/kx-shell-core/src/syncobj.rs` with `init_drm_syncobj_global`, DRM render node probing (`/dev/dri/renderD128`), syncobj eventfd capability checking, `delegate_drm_syncobj!`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/drm_syncobj_client.rs` verifying global advertisement, version 1 binding, surface destroy lifecycle, and hostile client duplicate `get_surface` protocol rejection.
 - **Phase 0 (Foundation):**
   - Pinned toolchain (Rust 2024 / 1.99.0) and dependencies.
   - `crates/kx-config`: typed configuration, defaults, 256 KiB size boundary, two-pass version parser, proptests.
@@ -121,6 +136,13 @@
     - F-04 (Low): Updated `docs/SECURITY.md` privilege table classifying `zxdg_decoration_manager_v1` and `xdg_activation_v1` as Public, and added Phase 3 security review log entry.
     - Post-audit resolution addendum recorded in `docs/reviews/phase-3-review.md`. Verification suite 100% green. Phase 3 exit criteria satisfied.
 
+  - **Milestone 4D (Text Input & IME) — DONE:**
+    - Step 4D.1: `zwp_text_input_v3` protocol handler (`TextInputManagerState`, `TextInputSeat`, focus tracking on enter/leave, IME request routing).
+    - Step 4D.2: `zwp_input_method_v2` protocol handler (`InputMethodManagerState`, `InputMethodHandler`, `InputMethodHandle`, non-panicking `parent_geometry`), privileged allow-list gating (`is_input_method_allowed`, `can_view` filtered global).
+    - Full integration tests in `crates/kx-shell-core/tests/text_input_client.rs` (3 scenarios: manager advertisement, focus enter/leave, enable/disable roundtrips) and `crates/kx-shell-core/tests/input_method_client.rs` (3 scenarios: unprivileged hiding, privileged advertisement, non-panicking parent geometry on unmapped surface).
+  - **Milestone 4E (Session Control & Telemetry) — IN PROGRESS:**
+    - Step 4E.1 — DONE: `ext_session_lock_v1` session locking protocol handler (`SessionLockManagerState`, `SessionLockHandler`), allow-list security filter (`is_session_lock_allowed`, `can_view` filtered global), and fail-closed guarantee per Rule 05 (compositor remains locked if client crashes or disconnects without explicit unlock). Comprehensive integration test suite in `crates/kx-shell-core/tests/session_lock_client.rs` (4 scenarios: unprivileged global hidden, privileged global advertised, lock/unlock lifecycle, and fail-closed persistence on client disconnect).
+
 ## Pending-hardware items (Phase 2)
 The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
 1. **Bare-metal multi-monitor output testing:** Verification with physical HDMI / DisplayPort / DisplayPort MST daisy chains on discrete AMD, NVIDIA, and Intel GPUs (in addition to the virtualized DRM connectors verified in UTM/QEMU).
@@ -130,29 +152,24 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- None — Phase 3 (Window Management) completed and closed; stopped at Phase 3.
+- **Milestone 4E (Session Control & Telemetry):**
+  - Step 4E.2: `ext_foreign_toplevel_list_v1` for taskbars and pagers.
 
 ## Next
-- **Milestone 4A (Buffer Management & Explicit Sync):**
-  - Step 4A.1: `linux-dmabuf` protocol handler with v4 format table advertising and tranches feedback.
-  - Step 4A.2: Explicit synchronization via `linux-drm-syncobj` protocol.
-- **Milestone 4B (Scaling & Viewport Transformation):**
-  - Step 4B.1: `wp_viewporter` implementation for cropped/scaled video buffers and games.
-  - Step 4B.2: `wp_fractional_scale_v1` protocol for fractional display scales (e.g. 1.25x, 1.5x).
-- **Milestone 4C (Cursor & Pointer Control):**
-  - Step 4C.1: `wp_cursor_shape_v1` server-side cursor shapes.
-  - Step 4C.2: `zwp_pointer_constraints_v1` (confined and locked pointer for games/FPS).
-  - Step 4C.3: `zwp_relative_pointer_v1` for unaccelerated high-precision mouse input.
-- **Milestone 4D (Text Input & IME):**
-  - Step 4D.1: `zwp_text_input_v3` and `zwp_input_method_v2` for input methods.
 - **Milestone 4E (Session Control & Telemetry):**
-  - Step 4E.1: `ext_session_lock_v1` session locking protocol (fail-closed per Rule 05).
-  - Step 4E.2: `ext_foreign_toplevel_list_v1` for taskbars and pagers.
   - Step 4E.3: `wp_presentation_time` feedback with real vblank timestamps.
   - Step 4E.4: `zwp_idle_inhibit_v1` and `ext_idle_notify_v1`.
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-shell-core --test session_lock_client`
+- `cargo test -p kx-shell-core --test text_input_client`
+- `cargo test -p kx-shell-core --test input_method_client`
+- `cargo test -p kx-shell-core --test cursor_shape_client`
+- `cargo test -p kx-shell-core --test pointer_constraints_client`
+- `cargo test -p kx-shell-core --test relative_pointer_client`
+- `cargo test -p kx-shell-core --test viewporter_client`
+- `cargo test -p kx-shell-core --test fractional_scale_client`
 - `cargo test -p kx-layout`
 - `cargo test -p kx-shell-core --test xdg_shell_client`
 - `cargo test -p kx-shell-core --test interactive_grab`

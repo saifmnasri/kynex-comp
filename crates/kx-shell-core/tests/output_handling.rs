@@ -407,3 +407,57 @@ fn test_output_unplug_window_migration() -> Result<(), Box<dyn std::error::Error
 
     Ok(())
 }
+
+#[test]
+fn test_output_resize_resizes_maximized_window() -> Result<(), Box<dyn std::error::Error>> {
+    let mut harness = OutputTestHarness::new()?;
+    harness.step()?;
+
+    let wid = *harness
+        .state
+        .window_map
+        .keys()
+        .next()
+        .ok_or("No mapped window")?;
+
+    // Request maximize
+    harness.xdg_toplevel.set_maximized();
+    harness.step()?;
+
+    let win = harness
+        .state
+        .window_manager
+        .window(wid)
+        .ok_or("Window not found")?;
+    assert_eq!(win.state, WindowState::Maximized);
+    assert_eq!(win.geometry.width, 1280);
+    assert_eq!(win.geometry.height, 720);
+
+    // Update output size (e.g. user resizes nested winit window to 1600x900)
+    harness.state.update_output_size((1600, 900).into());
+    harness.step()?;
+
+    let win = harness
+        .state
+        .window_manager
+        .window(wid)
+        .ok_or("Window not found")?;
+    assert_eq!(win.state, WindowState::Maximized);
+    assert_eq!(win.geometry.width, 1600);
+    assert_eq!(win.geometry.height, 900);
+
+    let window_elem = harness
+        .state
+        .window_map
+        .get(&wid)
+        .ok_or("Window element missing")?;
+    let loc = harness
+        .state
+        .space
+        .element_location(window_elem)
+        .ok_or("Window not in space")?;
+    assert_eq!(loc.x, win.geometry.x);
+    assert_eq!(loc.y, win.geometry.y);
+
+    Ok(())
+}

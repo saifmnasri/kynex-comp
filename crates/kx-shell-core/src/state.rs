@@ -6,32 +6,31 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowId, WindowManager};
+use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowGeometry, WindowId, WindowManager};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
-use smithay::desktop::{PopupKind, PopupManager, Space, Window};
+use smithay::desktop::{PopupManager, Space, Window};
 use smithay::input::keyboard::XkbConfig;
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
 use smithay::output::{Mode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
-use smithay::reexports::wayland_server::protocol::wl_seat::WlSeat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
-use smithay::utils::{Logical, Physical, Point, Serial, Size, Transform};
+use smithay::utils::{Logical, Physical, Point, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
+use smithay::wayland::dmabuf::{DmabufGlobal, DmabufState};
+use smithay::wayland::drm_syncobj::DrmSyncobjState;
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
+use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
-use smithay::wayland::shell::xdg::{
-    PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
-};
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::{
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_decoration,
-    delegate_xdg_shell,
 };
 
 use crate::client::ClientState;
@@ -77,6 +76,33 @@ pub struct KynexState {
     pub display_handle: DisplayHandle,
     /// XDG activation protocol state (`xdg_activation_v1`).
     pub xdg_activation_state: XdgActivationState,
+    /// Linux DMA-BUF protocol state (`zwp_linux_dmabuf_v1`).
+    pub dmabuf_state: DmabufState,
+    /// Handle to registered dmabuf global.
+    pub dmabuf_global: Option<DmabufGlobal>,
+    /// DRM syncobj explicit synchronization protocol state (`wp_linux_drm_syncobj_manager_v1`).
+    pub drm_syncobj_state: Option<DrmSyncobjState>,
+    /// Viewport protocol state (`wp_viewporter`).
+    pub viewporter_state: ViewporterState,
+    /// Fractional scale protocol state (`wp_fractional_scale_v1`).
+    pub fractional_scale_manager_state:
+        smithay::wayland::fractional_scale::FractionalScaleManagerState,
+    /// Cursor shape protocol state (`wp_cursor_shape_v1`).
+    pub cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
+    /// Pointer constraints protocol state (`zwp_pointer_constraints_v1`).
+    pub pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
+    /// Relative pointer protocol state (`zwp_relative_pointer_v1`).
+    pub relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
+    /// Text input manager protocol state (`zwp_text_input_v3`).
+    pub text_input_state: smithay::wayland::text_input::TextInputManagerState,
+    /// Input method manager protocol state (`zwp_input_method_v2`).
+    pub input_method_state: smithay::wayland::input_method::InputMethodManagerState,
+    /// Wayland session lock protocol state (`ext_session_lock_v1`).
+    pub session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    /// Whether the session is currently locked.
+    pub is_session_locked: bool,
+    /// Active lock screen surfaces.
+    pub lock_surfaces: Vec<smithay::wayland::session_lock::LockSurface>,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -119,6 +145,19 @@ impl KynexState {
         let layer_shell_state = create_layer_shell_state(dh);
         let display_handle = dh.clone();
         let xdg_activation_state = XdgActivationState::new::<Self>(dh);
+        let mut dmabuf_state = DmabufState::new();
+        let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
+        let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
+        let viewporter_state = crate::viewporter::init_viewporter_global(dh);
+        let fractional_scale_manager_state =
+            crate::fractional_scale::init_fractional_scale_global(dh);
+        let cursor_shape_manager_state = crate::cursor_shape::init_cursor_shape_global(dh);
+        let pointer_constraints_state =
+            crate::pointer_constraints::init_pointer_constraints_global(dh);
+        let relative_pointer_state = crate::relative_pointer::init_relative_pointer_global(dh);
+        let text_input_state = crate::text_input::init_text_input_global(dh);
+        let input_method_state = crate::input_method::init_input_method_global(dh);
+        let session_lock_state = crate::session_lock::init_session_lock_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -140,6 +179,19 @@ impl KynexState {
             layer_shell_state,
             display_handle,
             xdg_activation_state,
+            dmabuf_state,
+            dmabuf_global,
+            drm_syncobj_state,
+            viewporter_state,
+            fractional_scale_manager_state,
+            cursor_shape_manager_state,
+            pointer_constraints_state,
+            relative_pointer_state,
+            text_input_state,
+            input_method_state,
+            session_lock_state,
+            is_session_locked: false,
+            lock_surfaces: Vec::new(),
             config,
         })
     }
@@ -181,13 +233,41 @@ impl KynexState {
     }
 
     /// Updates the output geometry when the nested window is resized.
-    pub fn update_output_size(&self, new_size: Size<i32, Physical>) {
+    pub fn update_output_size(&mut self, new_size: Size<i32, Physical>) {
         let mode = Mode {
             size: new_size,
             refresh: 60_000,
         };
         self.output
             .change_current_state(Some(mode), None, None, None);
+        self.space.refresh();
+
+        smithay::desktop::layer_map_for_output(&self.output).arrange();
+
+        let usable_area = crate::window::output_usable_geometry(self, &self.output);
+        let output_geo = self.space.output_geometry(&self.output).map_or_else(
+            || WindowGeometry::new(0, 0, new_size.w, new_size.h),
+            |geo| WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h),
+        );
+        self.window_manager.arrange(output_geo, usable_area);
+
+        for (&wid, window) in &self.window_map {
+            if let Some(win_data) = self.window_manager.window(wid) {
+                if win_data.state == kx_layout::WindowState::Maximized
+                    || win_data.state == kx_layout::WindowState::Fullscreen
+                {
+                    if let Some(toplevel) = window.toplevel() {
+                        toplevel.with_pending_state(|toplevel_state| {
+                            toplevel_state.size =
+                                Some((win_data.geometry.width, win_data.geometry.height).into());
+                        });
+                        toplevel.send_configure();
+                    }
+                }
+            }
+        }
+
+        crate::window::sync_layout_to_space(self);
     }
 
     /// Maps an additional display output into the compositor's global space.
@@ -353,7 +433,13 @@ impl SeatHandler for KynexState {
         &mut self.seat_state
     }
 
-    fn focus_changed(&mut self, _seat: &Seat<Self>, _focused: Option<&WlSurface>) {}
+    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+        use smithay::wayland::text_input::TextInputSeat;
+        let text_input = seat.text_input();
+        text_input.leave();
+        text_input.set_focus(focused.cloned());
+        text_input.enter();
+    }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         self.cursor_status = image;
@@ -364,124 +450,10 @@ impl OutputHandler for KynexState {
     fn output_bound(&mut self, _output: Output, _wl_output: WlOutput) {}
 }
 
-impl XdgShellHandler for KynexState {
-    fn xdg_shell_state(&mut self) -> &mut XdgShellState {
-        &mut self.xdg_shell_state
-    }
-
-    fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        crate::window::map_new_toplevel(self, &surface);
-    }
-
-    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
-        // Enforce anti-DoS popup nesting depth bound per Rule 04/05
-        const MAX_POPUP_DEPTH: usize = 8;
-        let mut depth = 0;
-        let mut current_parent = surface.get_parent_surface();
-        while let Some(parent) = current_parent {
-            depth += 1;
-            if depth > MAX_POPUP_DEPTH {
-                tracing::warn!(
-                    depth,
-                    "Popup nesting depth exceeded limit; sending popup_done"
-                );
-                surface.send_popup_done();
-                return;
-            }
-            if let Some(parent_popup) = self.popups.find_popup(&parent) {
-                current_parent = match parent_popup {
-                    PopupKind::Xdg(ref p) => p.get_parent_surface(),
-                    PopupKind::InputMethod(_) => None,
-                };
-            } else {
-                break;
-            }
-        }
-
-        if let Err(err) = self.popups.track_popup(PopupKind::from(surface.clone())) {
-            tracing::warn!(?err, "Failed to track popup in popup manager");
-            return;
-        }
-        if let Err(err) = surface.send_configure() {
-            tracing::warn!(?err, "Failed to send initial popup configure");
-        }
-    }
-
-    fn move_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial) {
-        crate::grab::handle_client_move_request(self, &surface, &seat, serial);
-    }
-
-    fn resize_request(
-        &mut self,
-        surface: ToplevelSurface,
-        seat: WlSeat,
-        serial: Serial,
-        edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
-    ) {
-        crate::grab::handle_client_resize_request(self, &surface, &seat, serial, edges);
-    }
-
-    fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
-
-    fn reposition_request(
-        &mut self,
-        surface: PopupSurface,
-        _positioner: PositionerState,
-        token: u32,
-    ) {
-        surface.send_repositioned(token);
-    }
-
-    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
-        crate::window::unmap_toplevel(self, &surface);
-    }
-
-    fn popup_destroyed(&mut self, _surface: PopupSurface) {
-        self.popups.cleanup();
-    }
-
-    fn maximize_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_maximize_request(self, &surface);
-    }
-
-    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_unmaximize_request(self, &surface);
-    }
-
-    fn fullscreen_request(&mut self, surface: ToplevelSurface, output: Option<WlOutput>) {
-        crate::window::handle_fullscreen_request(self, &surface, output);
-    }
-
-    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_unfullscreen_request(self, &surface);
-    }
-
-    fn minimize_request(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_minimize_request(self, &surface);
-    }
-
-    fn ack_configure(
-        &mut self,
-        surface: WlSurface,
-        configure: smithay::wayland::shell::xdg::Configure,
-    ) {
-        crate::window::handle_ack_configure(self, &surface, configure);
-    }
-
-    fn title_changed(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_title_changed(self, &surface);
-    }
-
-    fn app_id_changed(&mut self, surface: ToplevelSurface) {
-        crate::window::handle_app_id_changed(self, &surface);
-    }
-}
-
 delegate_compositor!(KynexState);
 delegate_shm!(KynexState);
 delegate_seat!(KynexState);
 delegate_output!(KynexState);
-delegate_xdg_shell!(KynexState);
 delegate_xdg_decoration!(KynexState);
 
 fn create_layer_shell_state(dh: &DisplayHandle) -> WlrLayerShellState {

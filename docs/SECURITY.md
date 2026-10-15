@@ -6,10 +6,10 @@ Authoritative rules: `.agents/rules/05-security.md`. This file records the threa
 
 | Global / IPC command | Class | Who may use it | Consent needed |
 |----------------------|-------|----------------|----------------|
-| `wl_compositor`, `wl_shm`, `xdg_wm_base`, `zxdg_decoration_manager_v1`, `xdg_activation_v1` | Public | any client | no |
-| `zwlr_layer_shell_v1`, idle-inhibit, foreign-toplevel list | Restricted | allow-listed or shell clients | no |
+| `wl_compositor`, `wl_shm`, `xdg_wm_base`, `zxdg_decoration_manager_v1`, `xdg_activation_v1`, `zwp_linux_dmabuf_v1`, `zwp_linux_dmabuf_feedback_v1`, `wp_linux_drm_syncobj_manager_v1`, `wp_viewporter`, `wp_fractional_scale_manager_v1`, `wp_cursor_shape_manager_v1`, `zwp_relative_pointer_manager_v1`, `zwp_text_input_manager_v3` | Public | any client | no |
+| `zwlr_layer_shell_v1`, `zwp_pointer_constraints_v1` (focus gated), idle-inhibit, foreign-toplevel list | Restricted | allow-listed or shell clients / active focus | no |
 | screencopy / image-copy-capture | Privileged | portal backend only | yes (portal prompt) |
-| data-control, virtual input, output-management, input-method, gamma | Privileged | allow-listed executables only | policy |
+| `zwp_input_method_manager_v2`, data-control, virtual input, output-management, gamma | Privileged | allow-listed executables only | policy |
 | `ext_session_lock_v1` | Privileged | lock client only; fail closed | policy |
 
 ## Known limitations
@@ -21,3 +21,4 @@ Authoritative rules: `.agents/rules/05-security.md`. This file records the threa
 ## Review log
 
 - **2026-10-14 (Phase 3 Security & Window Management Review):** Scope: Phase 3 window management, layer shell, xdg-activation, SSD decoration, and hostile-client protection. Outcome: PASS. Verified deny-by-default privilege evaluation for `zwlr_layer_shell_v1` (`can_view` filtered), socket peer credential caching (`SO_PEERCRED` and `/proc/<pid>/exe` resolution), activation token bounding (32 tokens, 30s TTL), resource limits per client (`max_surfaces = 64`, `max_layer_surfaces = 8`), popup depth boundary (`MAX_POPUP_DEPTH = 8`), string truncation ($\le 4096$ bytes), and clean grab lifecycle management.
+- **2026-10-15 (Step 4E.1 Session Lock Security Review):** Scope: `ext_session_lock_v1` privileged global filter and fail-closed lifecycle. Outcome: PASS. Verified `can_view` global filter hiding `ext_session_lock_manager_v1` from unauthorized clients, allow-list peer credential gating (`is_session_lock_allowed`), and fail-closed persistence per Rule 05 (compositor remains locked if lock client disconnects or crashes unexpectedly without `UnlockAndDestroy`).

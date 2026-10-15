@@ -12,7 +12,7 @@ use super::*;
 #[test]
 fn test_kynex_state_initialization() {
     let display: Display<KynexState> = Display::new().unwrap();
-    let state = KynexState::new(
+    let mut state = KynexState::new(
         &display.handle(),
         "wayland-test-0".into(),
         (1280, 720).into(),

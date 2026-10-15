@@ -9,28 +9,42 @@
 pub mod action;
 pub mod activation;
 pub mod client;
+pub mod cursor_shape;
 pub mod data_device;
 pub mod decoration;
+pub mod dmabuf;
 pub mod drm;
 pub mod error;
+pub mod fractional_scale;
 pub mod frame_clock;
 pub mod grab;
+pub mod input_method;
 pub mod layer_shell;
 pub mod nested;
+pub mod pointer_constraints;
+pub mod relative_pointer;
+pub mod session_lock;
 pub mod state;
+pub mod syncobj;
+pub mod text_input;
+pub mod viewporter;
 pub mod window;
+pub mod xdg_shell;
 
 #[cfg(feature = "fault-injection")]
 pub mod fault;
 
 pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
 pub use client::{ClientLimits, ClientState};
+pub use cursor_shape::init_cursor_shape_global;
+pub use dmabuf::{MAX_DMABUF_DIMENSION, default_dmabuf_formats, init_dmabuf_global};
 pub use drm::{
     ConnectorInfo, DrmDeviceInfo, DrmDiagnosticReport, DrmOptions, DrmSession, ModeInfo, run_drm,
 };
 pub use error::ShellError;
 #[cfg(feature = "fault-injection")]
 pub use fault::{FaultController, FaultError, FaultSpec, MAX_HANG_SECS, MAX_TRIGGER_FRAME};
+pub use fractional_scale::{init_fractional_scale_global, update_surface_fractional_scale};
 pub use frame_clock::{FrameClock, FrameClockError, FrameState, QueueResult};
 pub use grab::{
     BTN_LEFT, BTN_RIGHT, MoveSurfaceGrab, ResizeSurfaceGrab, detect_resize_edge,
@@ -38,5 +52,12 @@ pub use grab::{
     modifiers_to_key_modifiers, start_compositor_move_grab, start_compositor_resize_grab,
     try_start_compositor_grab,
 };
+pub use input_method::init_input_method_global;
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
+pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
+pub use relative_pointer::init_relative_pointer_global;
+pub use session_lock::init_session_lock_global;
 pub use state::KynexState;
+pub use syncobj::init_drm_syncobj_global;
+pub use text_input::init_text_input_global;
+pub use viewporter::init_viewporter_global;
