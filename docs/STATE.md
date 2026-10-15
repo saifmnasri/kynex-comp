@@ -3,9 +3,12 @@
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
 **Current phase:** 4 — Real-App Protocol Completeness (Milestone 4A: Buffer Management & Explicit Sync)
-**Last updated:** 2026-10-15 — Phase 4 started on branch `feat/phase-4a-dmabuf-sync`. Implementation plan approved in `phase_4_plan.md`. Beginning Milestone 4A (Buffer Management & Explicit Sync) with Step 4A.1: `linux-dmabuf` protocol handler with v4 format table and tranches feedback. Baseline verification 100% green (`just check`).
+**Last updated:** 2026-10-15 — Step 4A.1 (`linux-dmabuf` v4 feedback and format advertising) complete on `feat/phase-4a-dmabuf-sync`. In-process hostile-client test suite passed. Verification gate green (`just check`). Advancing to Step 4A.2 (`linux-drm-syncobj` explicit sync).
 
 ## Done
+- **Phase 4 (Real-App Protocol Completeness):**
+  - **Milestone 4A (Buffer Management & Explicit Sync):**
+    - Step 4A.1: `linux-dmabuf` protocol handler in `crates/kx-shell-core/src/dmabuf.rs` (`zwp_linux_dmabuf_v1` and `zwp_linux_dmabuf_feedback_v1`) advertising version 4/5 format tables, linear modifiers for standard 32-bit formats (ARGB8888, XRGB8888, ABGR8888, XBGR8888), default device feedback tranches, plane count bounding ($1 \le \text{planes} \le 4$), dimension sanity checking ($0 < \text{dim} \le 16384$), and integration tests in `crates/kx-shell-core/tests/dmabuf_client.rs` verifying binding, feedback reception, and hostile client rejection with protocol errors.
 - **Phase 0 (Foundation):**
   - Pinned toolchain (Rust 2024 / 1.99.0) and dependencies.
   - `crates/kx-config`: typed configuration, defaults, 256 KiB size boundary, two-pass version parser, proptests.
@@ -131,11 +134,9 @@ The following hardware-dependent verification items are deferred until physical 
 
 ## In progress
 - **Milestone 4A (Buffer Management & Explicit Sync):**
-  - Step 4A.1: `linux-dmabuf` protocol handler (`zwp_linux_dmabuf_v1` and `zwp_linux_dmabuf_feedback_v1`) with v4 format table advertising and tranches feedback.
+  - Step 4A.2: Explicit synchronization via `linux-drm-syncobj` protocol (`wp_linux_drm_syncobj_manager_v1`).
 
 ## Next
-- **Milestone 4A (Buffer Management & Explicit Sync):**
-  - Step 4A.2: Explicit synchronization via `linux-drm-syncobj` protocol.
 - **Milestone 4B (Scaling & Viewport Transformation):**
   - Step 4B.1: `wp_viewporter` implementation for cropped/scaled video buffers and games.
   - Step 4B.2: `wp_fractional_scale_v1` protocol for fractional display scales (e.g. 1.25x, 1.5x).

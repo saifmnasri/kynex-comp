@@ -390,3 +390,44 @@ pub fn handle_app_id_changed(state: &mut KynexState, surface: &ToplevelSurface) 
         win.set_app_id(&app_id);
     }
 }
+
+/// Handles a new popup request, enforcing anti-DoS nesting depth bounds per Rules 04/05.
+pub fn handle_new_popup(
+    state: &mut KynexState,
+    surface: &smithay::wayland::shell::xdg::PopupSurface,
+    _positioner: smithay::wayland::shell::xdg::PositionerState,
+) {
+    const MAX_POPUP_DEPTH: usize = 8;
+    let mut depth = 0;
+    let mut current_parent = surface.get_parent_surface();
+    while let Some(parent) = current_parent {
+        depth += 1;
+        if depth > MAX_POPUP_DEPTH {
+            tracing::warn!(
+                depth,
+                "Popup nesting depth exceeded limit; sending popup_done"
+            );
+            surface.send_popup_done();
+            return;
+        }
+        if let Some(parent_popup) = state.popups.find_popup(&parent) {
+            current_parent = match parent_popup {
+                smithay::desktop::PopupKind::Xdg(ref p) => p.get_parent_surface(),
+                smithay::desktop::PopupKind::InputMethod(_) => None,
+            };
+        } else {
+            break;
+        }
+    }
+
+    if let Err(err) = state
+        .popups
+        .track_popup(smithay::desktop::PopupKind::from(surface.clone()))
+    {
+        tracing::warn!(?err, "Failed to track popup in popup manager");
+        return;
+    }
+    if let Err(err) = surface.send_configure() {
+        tracing::warn!(?err, "Failed to send initial popup configure");
+    }
+}

@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowId, WindowManager};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
-use smithay::desktop::{PopupKind, PopupManager, Space, Window};
+use smithay::desktop::{PopupManager, Space, Window};
 use smithay::input::keyboard::XkbConfig;
 use smithay::input::pointer::CursorImageStatus;
 use smithay::input::{Seat, SeatHandler, SeatState};
@@ -21,6 +21,7 @@ use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::{Logical, Physical, Point, Serial, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
+use smithay::wayland::dmabuf::{DmabufGlobal, DmabufState};
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
@@ -77,6 +78,10 @@ pub struct KynexState {
     pub display_handle: DisplayHandle,
     /// XDG activation protocol state (`xdg_activation_v1`).
     pub xdg_activation_state: XdgActivationState,
+    /// Linux DMA-BUF protocol state (`zwp_linux_dmabuf_v1`).
+    pub dmabuf_state: DmabufState,
+    /// Handle to registered dmabuf global.
+    pub dmabuf_global: Option<DmabufGlobal>,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -119,6 +124,8 @@ impl KynexState {
         let layer_shell_state = create_layer_shell_state(dh);
         let display_handle = dh.clone();
         let xdg_activation_state = XdgActivationState::new::<Self>(dh);
+        let mut dmabuf_state = DmabufState::new();
+        let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
 
         Ok(Self {
             compositor_state,
@@ -140,6 +147,8 @@ impl KynexState {
             layer_shell_state,
             display_handle,
             xdg_activation_state,
+            dmabuf_state,
+            dmabuf_global,
             config,
         })
     }
@@ -373,38 +382,8 @@ impl XdgShellHandler for KynexState {
         crate::window::map_new_toplevel(self, &surface);
     }
 
-    fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
-        // Enforce anti-DoS popup nesting depth bound per Rule 04/05
-        const MAX_POPUP_DEPTH: usize = 8;
-        let mut depth = 0;
-        let mut current_parent = surface.get_parent_surface();
-        while let Some(parent) = current_parent {
-            depth += 1;
-            if depth > MAX_POPUP_DEPTH {
-                tracing::warn!(
-                    depth,
-                    "Popup nesting depth exceeded limit; sending popup_done"
-                );
-                surface.send_popup_done();
-                return;
-            }
-            if let Some(parent_popup) = self.popups.find_popup(&parent) {
-                current_parent = match parent_popup {
-                    PopupKind::Xdg(ref p) => p.get_parent_surface(),
-                    PopupKind::InputMethod(_) => None,
-                };
-            } else {
-                break;
-            }
-        }
-
-        if let Err(err) = self.popups.track_popup(PopupKind::from(surface.clone())) {
-            tracing::warn!(?err, "Failed to track popup in popup manager");
-            return;
-        }
-        if let Err(err) = surface.send_configure() {
-            tracing::warn!(?err, "Failed to send initial popup configure");
-        }
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        crate::window::handle_new_popup(self, &surface, positioner);
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial) {

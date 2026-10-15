@@ -11,6 +11,7 @@ pub mod activation;
 pub mod client;
 pub mod data_device;
 pub mod decoration;
+pub mod dmabuf;
 pub mod drm;
 pub mod error;
 pub mod frame_clock;
@@ -25,6 +26,7 @@ pub mod fault;
 
 pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
 pub use client::{ClientLimits, ClientState};
+pub use dmabuf::{MAX_DMABUF_DIMENSION, default_dmabuf_formats, init_dmabuf_global};
 pub use drm::{
     ConnectorInfo, DrmDeviceInfo, DrmDiagnosticReport, DrmOptions, DrmSession, ModeInfo, run_drm,
 };
