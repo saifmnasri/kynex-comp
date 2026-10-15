@@ -2,11 +2,15 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4C: Cursor & Pointer Control)
-**Last updated:** 2026-10-15 — Milestone 4B complete (Steps 4B.1 `wp_viewporter` and 4B.2 `wp_fractional_scale_v1`) on `feat/phase-4b-viewport-scale`. Full verification gate green (`just check`, `just doc`). Advancing to Milestone 4C (`wp_cursor_shape_v1`, pointer constraints, relative pointer).
+**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4D: Text Input & IME)
+**Last updated:** 2026-10-15 — Milestone 4C complete (Steps 4C.1 `wp_cursor_shape_v1`, 4C.2 `zwp_pointer_constraints_v1`, and 4C.3 `zwp_relative_pointer_v1`) on `feat/phase-4c-cursor-pointer`. Full verification gate green (`just check`, `just doc`). Advancing to Milestone 4D (`zwp_text_input_v3`, `zwp_input_method_v2`).
 
 ## Done
 - **Phase 4 (Real-App Protocol Completeness):**
+  - **Milestone 4C (Cursor & Pointer Control) — DONE:**
+    - Step 4C.1: Server-side cursor shape protocol handler in `crates/kx-shell-core/src/cursor_shape.rs` (`wp_cursor_shape_manager_v1` and `wp_cursor_shape_device_v1`) implementing `init_cursor_shape_global`, `CursorShapeHandler`, `delegate_cursor_shape!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/cursor_shape_client.rs` verifying global advertisement, version 1 binding, shape setting request dispatch, and clean destroy lifecycle.
+    - Step 4C.2: Pointer constraints protocol handler in `crates/kx-shell-core/src/pointer_constraints.rs` (`zwp_pointer_constraints_v1`, `ZwpLockedPointerV1`, and `ZwpConfinedPointerV1`) implementing `init_pointer_constraints_global`, `PointerConstraintsHandler`, `delegate_pointer_constraints!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/pointer_constraints_client.rs` verifying global advertisement, version 1 binding, locked pointer creation and destroy, and confined pointer creation and destroy.
+    - Step 4C.3: Relative pointer motions protocol handler in `crates/kx-shell-core/src/relative_pointer.rs` (`zwp_relative_pointer_manager_v1` and `ZwpRelativePointerV1`) implementing `init_relative_pointer_global`, `delegate_relative_pointer!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/relative_pointer_client.rs` verifying global advertisement, version 1 binding, relative pointer creation/destruction, and relative motion event delivery with dx/dy, dx_unaccel/dy_unaccel, and 64-bit microsecond timestamps.
   - **Milestone 4B (Scaling & Viewport Transformation) — DONE:**
     - Step 4B.1: `wp_viewporter` protocol handler in `crates/kx-shell-core/src/viewporter.rs` implementing `init_viewporter_global`, `delegate_viewporter!(KynexState)`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/viewporter_client.rs` verifying global advertisement, normal crop/destination lifecycle, hostile duplicate viewport rejection (`ViewportExists` error 0), invalid destination rejection (`BadValue` error 0), and invalid source coordinate rejection.
     - Step 4B.2: Fractional scale protocol handler in `crates/kx-shell-core/src/fractional_scale.rs` (`wp_fractional_scale_manager_v1` and `wp_fractional_scale_v1`) implementing `init_fractional_scale_global`, preferred fractional scale reporting in units of 120ths (`preferred_scale`), dynamic scale updates (`update_surface_fractional_scale`), `FractionalScaleHandler` integration with `Output::current_scale().fractional_scale()`, `docs/SECURITY.md` table update, and integration tests in `crates/kx-shell-core/tests/fractional_scale_client.rs` verifying global advertisement, preferred scale events (1.0x -> 120, 1.5x -> 180), clean destroy lifecycle, and hostile client duplicate `get_fractional_scale` rejection (`FractionalScaleExists` error 0).
@@ -137,15 +141,12 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- **Milestone 4C (Cursor & Pointer Control):**
-  - Step 4C.1: `wp_cursor_shape_v1` server-side cursor shapes.
+- **Milestone 4D (Text Input & IME):**
+  - Step 4D.1: `zwp_text_input_v3` for client text input.
 
 ## Next
-- **Milestone 4C (Cursor & Pointer Control):**
-  - Step 4C.2: `zwp_pointer_constraints_v1` (confined and locked pointer for games/FPS).
-  - Step 4C.3: `zwp_relative_pointer_v1` for unaccelerated high-precision mouse input.
 - **Milestone 4D (Text Input & IME):**
-  - Step 4D.1: `zwp_text_input_v3` and `zwp_input_method_v2` for input methods.
+  - Step 4D.2: `zwp_input_method_v2` for input methods.
 - **Milestone 4E (Session Control & Telemetry):**
   - Step 4E.1: `ext_session_lock_v1` session locking protocol (fail-closed per Rule 05).
   - Step 4E.2: `ext_foreign_toplevel_list_v1` for taskbars and pagers.
@@ -154,6 +155,9 @@ The following hardware-dependent verification items are deferred until physical 
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-shell-core --test cursor_shape_client`
+- `cargo test -p kx-shell-core --test pointer_constraints_client`
+- `cargo test -p kx-shell-core --test relative_pointer_client`
 - `cargo test -p kx-shell-core --test viewporter_client`
 - `cargo test -p kx-shell-core --test fractional_scale_client`
 - `cargo test -p kx-layout`
