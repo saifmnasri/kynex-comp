@@ -18,6 +18,7 @@ pub mod error;
 pub mod fractional_scale;
 pub mod frame_clock;
 pub mod grab;
+pub mod input_method;
 pub mod layer_shell;
 pub mod nested;
 pub mod pointer_constraints;
@@ -50,6 +51,7 @@ pub use grab::{
     modifiers_to_key_modifiers, start_compositor_move_grab, start_compositor_resize_grab,
     try_start_compositor_grab,
 };
+pub use input_method::init_input_method_global;
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
 pub use relative_pointer::init_relative_pointer_global;

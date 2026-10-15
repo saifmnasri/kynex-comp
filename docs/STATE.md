@@ -136,6 +136,11 @@
     - F-04 (Low): Updated `docs/SECURITY.md` privilege table classifying `zxdg_decoration_manager_v1` and `xdg_activation_v1` as Public, and added Phase 3 security review log entry.
     - Post-audit resolution addendum recorded in `docs/reviews/phase-3-review.md`. Verification suite 100% green. Phase 3 exit criteria satisfied.
 
+  - **Milestone 4D (Text Input & IME) — DONE:**
+    - Step 4D.1: `zwp_text_input_v3` protocol handler (`TextInputManagerState`, `TextInputSeat`, focus tracking on enter/leave, IME request routing).
+    - Step 4D.2: `zwp_input_method_v2` protocol handler (`InputMethodManagerState`, `InputMethodHandler`, `InputMethodHandle`, non-panicking `parent_geometry`), privileged allow-list gating (`is_input_method_allowed`, `can_view` filtered global).
+    - Full integration tests in `crates/kx-shell-core/tests/text_input_client.rs` (3 scenarios: manager advertisement, focus enter/leave, enable/disable roundtrips) and `crates/kx-shell-core/tests/input_method_client.rs` (3 scenarios: unprivileged hiding, privileged advertisement, non-panicking parent geometry on unmapped surface).
+
 ## Pending-hardware items (Phase 2)
 The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
 1. **Bare-metal multi-monitor output testing:** Verification with physical HDMI / DisplayPort / DisplayPort MST daisy chains on discrete AMD, NVIDIA, and Intel GPUs (in addition to the virtualized DRM connectors verified in UTM/QEMU).
@@ -145,12 +150,11 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- **Milestone 4D (Text Input & IME):**
-  - Step 4D.2: `zwp_input_method_v2` for input methods (Privileged, allow-list gated).
+- **Milestone 4E (Session Control & Telemetry):**
+  - Step 4E.1: `ext_session_lock_v1` session locking protocol (fail-closed per Rule 05).
 
 ## Next
 - **Milestone 4E (Session Control & Telemetry):**
-  - Step 4E.1: `ext_session_lock_v1` session locking protocol (fail-closed per Rule 05).
   - Step 4E.2: `ext_foreign_toplevel_list_v1` for taskbars and pagers.
   - Step 4E.3: `wp_presentation_time` feedback with real vblank timestamps.
   - Step 4E.4: `zwp_idle_inhibit_v1` and `ext_idle_notify_v1`.
@@ -158,6 +162,7 @@ The following hardware-dependent verification items are deferred until physical 
 ## Verify commands
 - `just check`
 - `cargo test -p kx-shell-core --test text_input_client`
+- `cargo test -p kx-shell-core --test input_method_client`
 - `cargo test -p kx-shell-core --test cursor_shape_client`
 - `cargo test -p kx-shell-core --test pointer_constraints_client`
 - `cargo test -p kx-shell-core --test relative_pointer_client`

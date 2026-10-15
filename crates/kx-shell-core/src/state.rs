@@ -95,6 +95,8 @@ pub struct KynexState {
     pub relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
     /// Text input manager protocol state (`zwp_text_input_v3`).
     pub text_input_state: smithay::wayland::text_input::TextInputManagerState,
+    /// Input method manager protocol state (`zwp_input_method_v2`).
+    pub input_method_state: smithay::wayland::input_method::InputMethodManagerState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -148,6 +150,7 @@ impl KynexState {
             crate::pointer_constraints::init_pointer_constraints_global(dh);
         let relative_pointer_state = crate::relative_pointer::init_relative_pointer_global(dh);
         let text_input_state = crate::text_input::init_text_input_global(dh);
+        let input_method_state = crate::input_method::init_input_method_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -178,6 +181,7 @@ impl KynexState {
             pointer_constraints_state,
             relative_pointer_state,
             text_input_state,
+            input_method_state,
             config,
         })
     }
