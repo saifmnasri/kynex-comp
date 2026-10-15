@@ -30,6 +30,7 @@ use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::xdg_activation::XdgActivationState;
 use smithay::{
     delegate_compositor, delegate_output, delegate_seat, delegate_shm, delegate_xdg_decoration,
@@ -85,6 +86,8 @@ pub struct KynexState {
     pub dmabuf_global: Option<DmabufGlobal>,
     /// DRM syncobj explicit synchronization protocol state (`wp_linux_drm_syncobj_manager_v1`).
     pub drm_syncobj_state: Option<DrmSyncobjState>,
+    /// Viewport protocol state (`wp_viewporter`).
+    pub viewporter_state: ViewporterState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -130,6 +133,7 @@ impl KynexState {
         let mut dmabuf_state = DmabufState::new();
         let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
         let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
+        let viewporter_state = crate::viewporter::init_viewporter_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -154,6 +158,7 @@ impl KynexState {
             dmabuf_state,
             dmabuf_global,
             drm_syncobj_state,
+            viewporter_state,
             config,
         })
     }
