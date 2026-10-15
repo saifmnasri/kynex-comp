@@ -14,6 +14,7 @@ pub mod decoration;
 pub mod dmabuf;
 pub mod drm;
 pub mod error;
+pub mod fractional_scale;
 pub mod frame_clock;
 pub mod grab;
 pub mod layer_shell;
@@ -35,6 +36,7 @@ pub use drm::{
 pub use error::ShellError;
 #[cfg(feature = "fault-injection")]
 pub use fault::{FaultController, FaultError, FaultSpec, MAX_HANG_SECS, MAX_TRIGGER_FRAME};
+pub use fractional_scale::{init_fractional_scale_global, update_surface_fractional_scale};
 pub use frame_clock::{FrameClock, FrameClockError, FrameState, QueueResult};
 pub use grab::{
     BTN_LEFT, BTN_RIGHT, MoveSurfaceGrab, ResizeSurfaceGrab, detect_resize_edge,

@@ -88,6 +88,9 @@ pub struct KynexState {
     pub drm_syncobj_state: Option<DrmSyncobjState>,
     /// Viewport protocol state (`wp_viewporter`).
     pub viewporter_state: ViewporterState,
+    /// Fractional scale protocol state (`wp_fractional_scale_v1`).
+    pub fractional_scale_manager_state:
+        smithay::wayland::fractional_scale::FractionalScaleManagerState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -134,6 +137,8 @@ impl KynexState {
         let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
         let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
         let viewporter_state = crate::viewporter::init_viewporter_global(dh);
+        let fractional_scale_manager_state =
+            crate::fractional_scale::init_fractional_scale_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -159,6 +164,7 @@ impl KynexState {
             dmabuf_global,
             drm_syncobj_state,
             viewporter_state,
+            fractional_scale_manager_state,
             config,
         })
     }
