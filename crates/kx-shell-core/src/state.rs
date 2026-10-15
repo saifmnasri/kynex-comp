@@ -22,6 +22,7 @@ use smithay::utils::{Logical, Physical, Point, Serial, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufState};
+use smithay::wayland::drm_syncobj::DrmSyncobjState;
 use smithay::wayland::output::OutputHandler;
 use smithay::wayland::shell::wlr_layer::WlrLayerShellState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
@@ -82,6 +83,8 @@ pub struct KynexState {
     pub dmabuf_state: DmabufState,
     /// Handle to registered dmabuf global.
     pub dmabuf_global: Option<DmabufGlobal>,
+    /// DRM syncobj explicit synchronization protocol state (`wp_linux_drm_syncobj_manager_v1`).
+    pub drm_syncobj_state: Option<DrmSyncobjState>,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -126,6 +129,7 @@ impl KynexState {
         let xdg_activation_state = XdgActivationState::new::<Self>(dh);
         let mut dmabuf_state = DmabufState::new();
         let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
+        let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
 
         Ok(Self {
             compositor_state,
@@ -149,6 +153,7 @@ impl KynexState {
             xdg_activation_state,
             dmabuf_state,
             dmabuf_global,
+            drm_syncobj_state,
             config,
         })
     }

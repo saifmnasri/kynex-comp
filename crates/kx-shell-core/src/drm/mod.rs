@@ -70,10 +70,16 @@ impl DrmLoopState {
     fn new(
         gpu: DrmGpuResources,
         pipeline: DrmOutputPipeline,
-        state: KynexState,
+        mut state: KynexState,
         display: Display<KynexState>,
         options: &DrmOptions,
     ) -> Self {
+        if state.drm_syncobj_state.is_none() {
+            state.drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(
+                &display.handle(),
+                Some(gpu.drm_fd.clone()),
+            );
+        }
         let [r, g, b, a] = crate::nested::DEFAULT_BG_COLOR;
         Self {
             running: true,

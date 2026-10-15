@@ -19,6 +19,7 @@ pub mod grab;
 pub mod layer_shell;
 pub mod nested;
 pub mod state;
+pub mod syncobj;
 pub mod window;
 
 #[cfg(feature = "fault-injection")]
@@ -42,3 +43,4 @@ pub use grab::{
 };
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use state::KynexState;
+pub use syncobj::init_drm_syncobj_global;
