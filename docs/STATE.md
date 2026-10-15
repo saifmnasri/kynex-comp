@@ -2,8 +2,8 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 3 — Window Management (CLOSED)
-**Last updated:** 2026-10-14 — Phase 3 (Window Management) completed, independently audited (`docs/reviews/phase-3-review.md`), and all findings F-01 through F-04 surgically resolved and verified. Verification suite 100% green (`just check`, `just doc`, `cargo check --release --locked`, `cargo test --workspace --features fault-injection --locked`). Codebase stopped at Phase 3.
+**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4A: Buffer Management & Explicit Sync)
+**Last updated:** 2026-10-15 — Phase 4 started on branch `feat/phase-4a-dmabuf-sync`. Implementation plan approved in `phase_4_plan.md`. Beginning Milestone 4A (Buffer Management & Explicit Sync) with Step 4A.1: `linux-dmabuf` protocol handler with v4 format table and tranches feedback. Baseline verification 100% green (`just check`).
 
 ## Done
 - **Phase 0 (Foundation):**
@@ -130,11 +130,11 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- None — Phase 3 (Window Management) completed and closed; stopped at Phase 3.
+- **Milestone 4A (Buffer Management & Explicit Sync):**
+  - Step 4A.1: `linux-dmabuf` protocol handler (`zwp_linux_dmabuf_v1` and `zwp_linux_dmabuf_feedback_v1`) with v4 format table advertising and tranches feedback.
 
 ## Next
 - **Milestone 4A (Buffer Management & Explicit Sync):**
-  - Step 4A.1: `linux-dmabuf` protocol handler with v4 format table advertising and tranches feedback.
   - Step 4A.2: Explicit synchronization via `linux-drm-syncobj` protocol.
 - **Milestone 4B (Scaling & Viewport Transformation):**
   - Step 4B.1: `wp_viewporter` implementation for cropped/scaled video buffers and games.
