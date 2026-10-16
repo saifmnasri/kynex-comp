@@ -120,6 +120,8 @@ pub struct KynexState {
     /// Primary selection protocol state (`zwp_primary_selection_device_manager_v1`).
     pub primary_selection_state:
         smithay::wayland::selection::primary_selection::PrimarySelectionState,
+    /// Single-pixel buffer protocol state (`wp_single_pixel_buffer_manager_v1`).
+    pub single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -182,6 +184,7 @@ impl KynexState {
             idle_inhibit_state: proto.idle_inhibit_state,
             idle_inhibitors: Vec::new(),
             primary_selection_state: proto.primary_selection_state,
+            single_pixel_buffer_state: proto.single_pixel_buffer_state,
             config: kx_config::Config::default(),
         })
     }
@@ -382,6 +385,7 @@ struct ProtocolGlobals {
     presentation_state: smithay::wayland::presentation::PresentationState,
     idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     primary_selection_state: smithay::wayland::selection::primary_selection::PrimarySelectionState,
+    single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
 }
 
 fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
@@ -401,6 +405,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
     let presentation_state = crate::presentation::init_presentation_global(dh);
     let idle_inhibit_state = crate::idle_inhibit::init_idle_inhibit_global(dh);
     let primary_selection_state = crate::primary_selection::init_primary_selection_global(dh);
+    let single_pixel_buffer_state = crate::single_pixel_buffer::init_single_pixel_buffer_global(dh);
 
     ProtocolGlobals {
         dmabuf_state,
@@ -418,6 +423,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         presentation_state,
         idle_inhibit_state,
         primary_selection_state,
+        single_pixel_buffer_state,
     }
 }
 
