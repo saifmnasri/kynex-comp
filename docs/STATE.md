@@ -2,8 +2,8 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4D: Text Input & IME)
-**Last updated:** 2026-10-15 — Step 4D.1 (`zwp_text_input_v3`) completed on `feat/phase-4d-text-input`. Full verification gate green (`just check`, tests passing). Advancing to Step 4D.2 (`zwp_input_method_v2`).
+**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4E: Session Control & Telemetry)
+**Last updated:** 2026-10-16 — Step 4E.2 (`ext_foreign_toplevel_list_v1`) completed on `feat/phase-4e-session-telemetry`. Full verification gate green (`just check`, tests passing). Advancing to Step 4E.3 (`wp_presentation_time`).
 
 ## Done
 - **Phase 4 (Real-App Protocol Completeness):**
@@ -142,6 +142,7 @@
     - Full integration tests in `crates/kx-shell-core/tests/text_input_client.rs` (3 scenarios: manager advertisement, focus enter/leave, enable/disable roundtrips) and `crates/kx-shell-core/tests/input_method_client.rs` (3 scenarios: unprivileged hiding, privileged advertisement, non-panicking parent geometry on unmapped surface).
   - **Milestone 4E (Session Control & Telemetry) — IN PROGRESS:**
     - Step 4E.1 — DONE: `ext_session_lock_v1` session locking protocol handler (`SessionLockManagerState`, `SessionLockHandler`), allow-list security filter (`is_session_lock_allowed`, `can_view` filtered global), and fail-closed guarantee per Rule 05 (compositor remains locked if client crashes or disconnects without explicit unlock). Comprehensive integration test suite in `crates/kx-shell-core/tests/session_lock_client.rs` (4 scenarios: unprivileged global hidden, privileged global advertised, lock/unlock lifecycle, and fail-closed persistence on client disconnect).
+    - Step 4E.2 — DONE: `ext_foreign_toplevel_list_v1` foreign toplevel management protocol handler (`ForeignToplevelListState`, `ForeignToplevelListHandler`), allow-list security filter (`is_foreign_toplevel_allowed`, `can_view` filtered global), window map/unmap/title/app_id synchronization with `WindowManager`. Comprehensive integration test suite in `crates/kx-shell-core/tests/foreign_toplevel_client.rs` (3 scenarios: unprivileged global hidden, privileged global advertised, and full toplevel window lifecycle with title/app_id mutations and closed events).
 
 ## Pending-hardware items (Phase 2)
 The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
@@ -153,15 +154,15 @@ The following hardware-dependent verification items are deferred until physical 
 
 ## In progress
 - **Milestone 4E (Session Control & Telemetry):**
-  - Step 4E.2: `ext_foreign_toplevel_list_v1` for taskbars and pagers.
+  - Step 4E.3: `wp_presentation_time` feedback with real vblank timestamps.
 
 ## Next
 - **Milestone 4E (Session Control & Telemetry):**
-  - Step 4E.3: `wp_presentation_time` feedback with real vblank timestamps.
   - Step 4E.4: `zwp_idle_inhibit_v1` and `ext_idle_notify_v1`.
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-shell-core --test foreign_toplevel_client`
 - `cargo test -p kx-shell-core --test session_lock_client`
 - `cargo test -p kx-shell-core --test text_input_client`
 - `cargo test -p kx-shell-core --test input_method_client`

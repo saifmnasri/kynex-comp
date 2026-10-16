@@ -103,6 +103,14 @@ pub struct KynexState {
     pub is_session_locked: bool,
     /// Active lock screen surfaces.
     pub lock_surfaces: Vec<smithay::wayland::session_lock::LockSurface>,
+    /// Foreign toplevel list protocol state (`ext_foreign_toplevel_list_v1`).
+    pub foreign_toplevel_list_state:
+        smithay::wayland::foreign_toplevel_list::ForeignToplevelListState,
+    /// Active foreign toplevel handles indexed by window id.
+    pub foreign_toplevel_handles: std::collections::HashMap<
+        kx_layout::WindowId,
+        smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle,
+    >,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -158,6 +166,9 @@ impl KynexState {
         let text_input_state = crate::text_input::init_text_input_global(dh);
         let input_method_state = crate::input_method::init_input_method_global(dh);
         let session_lock_state = crate::session_lock::init_session_lock_global(dh);
+        let foreign_toplevel_list_state =
+            crate::foreign_toplevel::init_foreign_toplevel_list_global(dh);
+        let foreign_toplevel_handles = HashMap::new();
 
         Ok(Self {
             compositor_state,
@@ -192,6 +203,8 @@ impl KynexState {
             session_lock_state,
             is_session_locked: false,
             lock_surfaces: Vec::new(),
+            foreign_toplevel_list_state,
+            foreign_toplevel_handles,
             config,
         })
     }
