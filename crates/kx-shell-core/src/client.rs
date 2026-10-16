@@ -66,6 +66,8 @@ pub struct ClientState {
     pub is_input_method_allowed: AtomicBool,
     /// Cached authorization decision for `ext_session_lock_manager_v1`.
     pub is_session_lock_allowed: AtomicBool,
+    /// Cached authorization decision for `ext_foreign_toplevel_list_v1`.
+    pub is_foreign_toplevel_allowed: AtomicBool,
 }
 
 impl Default for ClientState {
@@ -83,6 +85,7 @@ impl Default for ClientState {
             is_layer_shell_allowed: AtomicBool::new(false),
             is_input_method_allowed: AtomicBool::new(false),
             is_session_lock_allowed: AtomicBool::new(false),
+            is_foreign_toplevel_allowed: AtomicBool::new(false),
         }
     }
 }
@@ -169,6 +172,18 @@ impl ClientState {
             .store(allowed, Ordering::Release);
     }
 
+    /// Returns `true` if this client is authorized to bind `ext_foreign_toplevel_list_v1`.
+    #[must_use]
+    pub fn is_foreign_toplevel_allowed(&self) -> bool {
+        self.is_foreign_toplevel_allowed.load(Ordering::Acquire)
+    }
+
+    /// Sets authorization for `ext_foreign_toplevel_list_v1`.
+    pub fn set_foreign_toplevel_allowed(&self, allowed: bool) {
+        self.is_foreign_toplevel_allowed
+            .store(allowed, Ordering::Release);
+    }
+
     /// Inspects peer socket credentials and caches the authorization decision.
     pub fn inspect_and_cache_privilege(&self, creds: &Credentials, allow_list: &[String]) {
         let compositor_uid = smithay::reexports::rustix::process::getuid().as_raw();
@@ -182,6 +197,8 @@ impl ClientState {
         self.is_input_method_allowed
             .store(is_allowed, Ordering::Release);
         self.is_session_lock_allowed
+            .store(is_allowed, Ordering::Release);
+        self.is_foreign_toplevel_allowed
             .store(is_allowed, Ordering::Release);
 
         if let Ok(mut exe_lock) = self.executable_path.lock() {
@@ -371,8 +388,20 @@ mod tests {
         // When current exe is in allow-list, must be allowed
         let current_exe = std::fs::read_link(format!("/proc/{proc_pid}/exe")).unwrap();
         let current_exe_str = current_exe.to_string_lossy().to_string();
-        let (allowed, exe) = evaluate_privilege(&creds_current, &[current_exe_str], self_uid);
+        let (allowed, exe) = evaluate_privilege(
+            &creds_current,
+            std::slice::from_ref(&current_exe_str),
+            self_uid,
+        );
         assert!(allowed);
         assert_eq!(exe, Some(current_exe));
+
+        // Test inspect_and_cache_privilege updates foreign toplevel allowed
+        let state = ClientState::default();
+        assert!(!state.is_foreign_toplevel_allowed());
+        state.inspect_and_cache_privilege(&creds_current, &[current_exe_str]);
+        assert!(state.is_foreign_toplevel_allowed());
+        state.set_foreign_toplevel_allowed(false);
+        assert!(!state.is_foreign_toplevel_allowed());
     }
 }

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowGeometry, WindowId, WindowManager};
+use kx_layout::{DEFAULT_WORKSPACE_COUNT, WindowId, WindowManager};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::desktop::{PopupManager, Space, Window};
 use smithay::input::keyboard::XkbConfig;
@@ -17,7 +17,7 @@ use smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer;
 use smithay::reexports::wayland_server::protocol::wl_output::WlOutput;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
-use smithay::utils::{Logical, Physical, Point, Size, Transform};
+use smithay::utils::{Physical, Point, Size, Transform};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{CompositorClientState, CompositorHandler, CompositorState};
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufState};
@@ -103,6 +103,20 @@ pub struct KynexState {
     pub is_session_locked: bool,
     /// Active lock screen surfaces.
     pub lock_surfaces: Vec<smithay::wayland::session_lock::LockSurface>,
+    /// Foreign toplevel list protocol state (`ext_foreign_toplevel_list_v1`).
+    pub foreign_toplevel_list_state:
+        smithay::wayland::foreign_toplevel_list::ForeignToplevelListState,
+    /// Active foreign toplevel handles indexed by window id.
+    pub foreign_toplevel_handles: std::collections::HashMap<
+        kx_layout::WindowId,
+        smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle,
+    >,
+    /// Presentation time protocol state (`wp_presentation`).
+    pub presentation_state: smithay::wayland::presentation::PresentationState,
+    /// Idle inhibitor protocol state (`zwp_idle_inhibit_v1`).
+    pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
+    /// Surfaces holding active idle inhibitors.
+    pub idle_inhibitors: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -118,81 +132,53 @@ impl KynexState {
         socket_name: String,
         output: Output,
     ) -> Result<Self, ShellError> {
-        let compositor_state = CompositorState::new::<Self>(dh);
-        let shm_state = ShmState::new::<Self>(dh, vec![]);
-        let mut seat_state = SeatState::new();
-        let mut seat = seat_state.new_wl_seat(dh, "kynex-seat-0");
-
-        // Add standard pointer and keyboard to the default seat
-        let _pointer = seat.add_pointer();
-        let _keyboard = seat.add_keyboard(XkbConfig::default(), 200, 200)?;
-
+        let (seat_state, seat) = init_seat(dh)?;
         let _global = output.create_global::<Self>(dh);
-
-        let data_device_state =
-            smithay::wayland::selection::data_device::DataDeviceState::new::<Self>(dh);
-        let xdg_decoration_state = XdgDecorationState::new::<Self>(dh);
-        let cursor_status = CursorImageStatus::default_named();
-        let xdg_shell_state = XdgShellState::new::<Self>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
-        let popups = PopupManager::default();
-        let binding_matcher = kx_input::BindingMatcher::with_defaults();
-        let window_manager = WindowManager::new(DEFAULT_WORKSPACE_COUNT);
-        let window_map = HashMap::new();
-        let surface_to_window_id = HashMap::new();
-        let config = kx_config::Config::default();
-        let layer_shell_state = create_layer_shell_state(dh);
-        let display_handle = dh.clone();
-        let xdg_activation_state = XdgActivationState::new::<Self>(dh);
-        let mut dmabuf_state = DmabufState::new();
-        let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
-        let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
-        let viewporter_state = crate::viewporter::init_viewporter_global(dh);
-        let fractional_scale_manager_state =
-            crate::fractional_scale::init_fractional_scale_global(dh);
-        let cursor_shape_manager_state = crate::cursor_shape::init_cursor_shape_global(dh);
-        let pointer_constraints_state =
-            crate::pointer_constraints::init_pointer_constraints_global(dh);
-        let relative_pointer_state = crate::relative_pointer::init_relative_pointer_global(dh);
-        let text_input_state = crate::text_input::init_text_input_global(dh);
-        let input_method_state = crate::input_method::init_input_method_global(dh);
-        let session_lock_state = crate::session_lock::init_session_lock_global(dh);
+        let proto = init_protocol_globals(dh);
 
         Ok(Self {
-            compositor_state,
-            shm_state,
+            compositor_state: CompositorState::new::<Self>(dh),
+            shm_state: ShmState::new::<Self>(dh, vec![]),
             seat_state,
             seat,
             output,
             socket_name,
-            xdg_shell_state,
+            xdg_shell_state: XdgShellState::new::<Self>(dh),
             space,
-            popups,
-            binding_matcher,
-            window_manager,
-            window_map,
-            surface_to_window_id,
-            data_device_state,
-            xdg_decoration_state,
-            cursor_status,
-            layer_shell_state,
-            display_handle,
-            xdg_activation_state,
-            dmabuf_state,
-            dmabuf_global,
-            drm_syncobj_state,
-            viewporter_state,
-            fractional_scale_manager_state,
-            cursor_shape_manager_state,
-            pointer_constraints_state,
-            relative_pointer_state,
-            text_input_state,
-            input_method_state,
-            session_lock_state,
+            popups: PopupManager::default(),
+            binding_matcher: kx_input::BindingMatcher::with_defaults(),
+            window_manager: WindowManager::new(DEFAULT_WORKSPACE_COUNT),
+            window_map: HashMap::new(),
+            surface_to_window_id: HashMap::new(),
+            data_device_state: smithay::wayland::selection::data_device::DataDeviceState::new::<Self>(
+                dh,
+            ),
+            xdg_decoration_state: XdgDecorationState::new::<Self>(dh),
+            cursor_status: CursorImageStatus::default_named(),
+            layer_shell_state: create_layer_shell_state(dh),
+            display_handle: dh.clone(),
+            xdg_activation_state: XdgActivationState::new::<Self>(dh),
+            dmabuf_state: proto.dmabuf_state,
+            dmabuf_global: proto.dmabuf_global,
+            drm_syncobj_state: proto.drm_syncobj_state,
+            viewporter_state: proto.viewporter_state,
+            fractional_scale_manager_state: proto.fractional_scale_manager_state,
+            cursor_shape_manager_state: proto.cursor_shape_manager_state,
+            pointer_constraints_state: proto.pointer_constraints_state,
+            relative_pointer_state: proto.relative_pointer_state,
+            text_input_state: proto.text_input_state,
+            input_method_state: proto.input_method_state,
+            session_lock_state: proto.session_lock_state,
             is_session_locked: false,
             lock_surfaces: Vec::new(),
-            config,
+            foreign_toplevel_list_state: proto.foreign_toplevel_list_state,
+            foreign_toplevel_handles: HashMap::new(),
+            presentation_state: proto.presentation_state,
+            idle_inhibit_state: proto.idle_inhibit_state,
+            idle_inhibitors: Vec::new(),
+            config: kx_config::Config::default(),
         })
     }
 
@@ -230,107 +216,6 @@ impl KynexState {
         );
 
         Self::new_with_output(dh, socket_name, output)
-    }
-
-    /// Updates the output geometry when the nested window is resized.
-    pub fn update_output_size(&mut self, new_size: Size<i32, Physical>) {
-        let mode = Mode {
-            size: new_size,
-            refresh: 60_000,
-        };
-        self.output
-            .change_current_state(Some(mode), None, None, None);
-        self.space.refresh();
-
-        smithay::desktop::layer_map_for_output(&self.output).arrange();
-
-        let usable_area = crate::window::output_usable_geometry(self, &self.output);
-        let output_geo = self.space.output_geometry(&self.output).map_or_else(
-            || WindowGeometry::new(0, 0, new_size.w, new_size.h),
-            |geo| WindowGeometry::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h),
-        );
-        self.window_manager.arrange(output_geo, usable_area);
-
-        for (&wid, window) in &self.window_map {
-            if let Some(win_data) = self.window_manager.window(wid) {
-                if win_data.state == kx_layout::WindowState::Maximized
-                    || win_data.state == kx_layout::WindowState::Fullscreen
-                {
-                    if let Some(toplevel) = window.toplevel() {
-                        toplevel.with_pending_state(|toplevel_state| {
-                            toplevel_state.size =
-                                Some((win_data.geometry.width, win_data.geometry.height).into());
-                        });
-                        toplevel.send_configure();
-                    }
-                }
-            }
-        }
-
-        crate::window::sync_layout_to_space(self);
-    }
-
-    /// Maps an additional display output into the compositor's global space.
-    pub fn map_output(
-        &mut self,
-        dh: &DisplayHandle,
-        output: &Output,
-        location: impl Into<Point<i32, Logical>>,
-    ) {
-        let _global = output.create_global::<Self>(dh);
-        self.space.map_output(output, location);
-        self.space.refresh();
-    }
-
-    /// Unmaps a display output from the compositor's global space.
-    pub fn unmap_output(&mut self, output: &Output) {
-        let mut layer_map = smithay::desktop::layer_map_for_output(output);
-        let layers: Vec<_> = layer_map.layers().cloned().collect();
-        for layer in layers {
-            layer_map.unmap_layer(&layer);
-        }
-        self.space.unmap_output(output);
-        self.space.refresh();
-    }
-
-    /// Migrates windows away from an unplugged output so they remain accessible on surviving outputs.
-    pub fn migrate_windows_from_unplugged(
-        &mut self,
-        unplugged_origin: Point<i32, Logical>,
-        unplugged_size: Size<i32, Logical>,
-        primary_origin: Point<i32, Logical>,
-        primary_size: Size<i32, Logical>,
-    ) {
-        let windows: Vec<(WindowId, Point<i32, Logical>)> = self
-            .window_map
-            .keys()
-            .copied()
-            .filter_map(|wid| {
-                self.window_manager
-                    .window(wid)
-                    .map(|w| (wid, Point::from((w.geometry.x, w.geometry.y))))
-            })
-            .collect();
-
-        for (wid, loc) in windows {
-            let new_loc = crate::drm::layout::migrate_window_position(
-                loc,
-                unplugged_origin,
-                unplugged_size,
-                primary_origin,
-                primary_size,
-            );
-            if new_loc != loc {
-                if let Some(win) = self.window_manager.window(wid) {
-                    let mut geom = win.geometry;
-                    geom.x = new_loc.x;
-                    geom.y = new_loc.y;
-                    self.window_manager.set_window_geometry(wid, geom);
-                }
-            }
-        }
-
-        crate::window::sync_layout_to_space(self);
     }
 }
 
@@ -462,6 +347,66 @@ fn create_layer_shell_state(dh: &DisplayHandle) -> WlrLayerShellState {
             .get_data::<crate::client::ClientState>()
             .is_some_and(crate::client::ClientState::is_layer_shell_allowed)
     })
+}
+
+struct ProtocolGlobals {
+    dmabuf_state: DmabufState,
+    dmabuf_global: Option<DmabufGlobal>,
+    drm_syncobj_state: Option<DrmSyncobjState>,
+    viewporter_state: ViewporterState,
+    fractional_scale_manager_state: smithay::wayland::fractional_scale::FractionalScaleManagerState,
+    cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
+    pointer_constraints_state: smithay::wayland::pointer_constraints::PointerConstraintsState,
+    relative_pointer_state: smithay::wayland::relative_pointer::RelativePointerManagerState,
+    text_input_state: smithay::wayland::text_input::TextInputManagerState,
+    input_method_state: smithay::wayland::input_method::InputMethodManagerState,
+    session_lock_state: smithay::wayland::session_lock::SessionLockManagerState,
+    foreign_toplevel_list_state: smithay::wayland::foreign_toplevel_list::ForeignToplevelListState,
+    presentation_state: smithay::wayland::presentation::PresentationState,
+    idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
+}
+
+fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
+    let mut dmabuf_state = DmabufState::new();
+    let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
+    let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
+    let viewporter_state = crate::viewporter::init_viewporter_global(dh);
+    let fractional_scale_manager_state = crate::fractional_scale::init_fractional_scale_global(dh);
+    let cursor_shape_manager_state = crate::cursor_shape::init_cursor_shape_global(dh);
+    let pointer_constraints_state = crate::pointer_constraints::init_pointer_constraints_global(dh);
+    let relative_pointer_state = crate::relative_pointer::init_relative_pointer_global(dh);
+    let text_input_state = crate::text_input::init_text_input_global(dh);
+    let input_method_state = crate::input_method::init_input_method_global(dh);
+    let session_lock_state = crate::session_lock::init_session_lock_global(dh);
+    let foreign_toplevel_list_state =
+        crate::foreign_toplevel::init_foreign_toplevel_list_global(dh);
+    let presentation_state = crate::presentation::init_presentation_global(dh);
+    let idle_inhibit_state = crate::idle_inhibit::init_idle_inhibit_global(dh);
+
+    ProtocolGlobals {
+        dmabuf_state,
+        dmabuf_global,
+        drm_syncobj_state,
+        viewporter_state,
+        fractional_scale_manager_state,
+        cursor_shape_manager_state,
+        pointer_constraints_state,
+        relative_pointer_state,
+        text_input_state,
+        input_method_state,
+        session_lock_state,
+        foreign_toplevel_list_state,
+        presentation_state,
+        idle_inhibit_state,
+    }
+}
+
+fn init_seat(dh: &DisplayHandle) -> Result<(SeatState<KynexState>, Seat<KynexState>), ShellError> {
+    let mut seat_state = SeatState::new();
+    let mut seat = seat_state.new_wl_seat(dh, "kynex-seat-0");
+    let _pointer = seat.add_pointer();
+    let _keyboard = seat.add_keyboard(XkbConfig::default(), 200, 200)?;
+    Ok((seat_state, seat))
 }
 
 #[cfg(test)]

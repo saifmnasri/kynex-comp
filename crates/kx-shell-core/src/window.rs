@@ -165,6 +165,8 @@ pub fn map_new_toplevel(state: &mut KynexState, surface: &ToplevelSurface) {
         .surface_to_window_id
         .insert(surface.wl_surface().clone(), window_id);
 
+    crate::foreign_toplevel::register_foreign_toplevel(state, window_id, &title, &app_id);
+
     if let Some(win_data) = state.window_manager.window(window_id) {
         let geom = win_data.geometry;
         surface.with_pending_state(|toplevel_state| {
@@ -192,6 +194,7 @@ pub fn unmap_toplevel(state: &mut KynexState, surface: &ToplevelSurface) {
     }
 
     if let Some(window_id) = state.surface_to_window_id.remove(surface.wl_surface()) {
+        crate::foreign_toplevel::unregister_foreign_toplevel(state, window_id);
         state.window_manager.unmap_window(window_id);
         if let Some(window) = state.window_map.remove(&window_id) {
             state.space.unmap_elem(&window);
@@ -382,6 +385,7 @@ pub fn handle_title_changed(state: &mut KynexState, surface: &ToplevelSurface) {
     if let Some(win) = state.window_manager.window_mut(wid) {
         win.set_title(&title);
     }
+    crate::foreign_toplevel::update_foreign_toplevel_title(state, wid, &title);
 }
 
 /// Handles client app ID updates.
@@ -399,6 +403,7 @@ pub fn handle_app_id_changed(state: &mut KynexState, surface: &ToplevelSurface) 
     if let Some(win) = state.window_manager.window_mut(wid) {
         win.set_app_id(&app_id);
     }
+    crate::foreign_toplevel::update_foreign_toplevel_app_id(state, wid, &app_id);
 }
 
 /// Handles a new popup request, enforcing anti-DoS nesting depth bounds per Rules 04/05.

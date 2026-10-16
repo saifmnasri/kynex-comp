@@ -15,13 +15,17 @@ pub mod decoration;
 pub mod dmabuf;
 pub mod drm;
 pub mod error;
+pub mod foreign_toplevel;
 pub mod fractional_scale;
 pub mod frame_clock;
 pub mod grab;
+pub mod idle_inhibit;
 pub mod input_method;
 pub mod layer_shell;
 pub mod nested;
+pub mod output;
 pub mod pointer_constraints;
+pub mod presentation;
 pub mod relative_pointer;
 pub mod session_lock;
 pub mod state;
@@ -44,6 +48,7 @@ pub use drm::{
 pub use error::ShellError;
 #[cfg(feature = "fault-injection")]
 pub use fault::{FaultController, FaultError, FaultSpec, MAX_HANG_SECS, MAX_TRIGGER_FRAME};
+pub use foreign_toplevel::init_foreign_toplevel_list_global;
 pub use fractional_scale::{init_fractional_scale_global, update_surface_fractional_scale};
 pub use frame_clock::{FrameClock, FrameClockError, FrameState, QueueResult};
 pub use grab::{
@@ -52,9 +57,11 @@ pub use grab::{
     modifiers_to_key_modifiers, start_compositor_move_grab, start_compositor_resize_grab,
     try_start_compositor_grab,
 };
+pub use idle_inhibit::init_idle_inhibit_global;
 pub use input_method::init_input_method_global;
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
+pub use presentation::{init_presentation_global, post_presentation_feedback};
 pub use relative_pointer::init_relative_pointer_global;
 pub use session_lock::init_session_lock_global;
 pub use state::KynexState;
