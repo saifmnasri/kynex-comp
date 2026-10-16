@@ -126,6 +126,10 @@ pub struct KynexState {
     pub content_type_state: smithay::wayland::content_type::ContentTypeState,
     /// Tearing control protocol state (`wp_tearing_control_manager_v1`).
     pub tearing_control_state: crate::tearing_control::TearingControlState,
+    /// Idle notifier protocol state (`ext_idle_notifier_v1`).
+    pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<Self>,
+    /// Dedicated internal event loop for idle timers.
+    pub idle_loop: Option<smithay::reexports::calloop::EventLoop<'static, Self>>,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -145,7 +149,7 @@ impl KynexState {
         let _global = output.create_global::<Self>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
-        let proto = init_protocol_globals(dh);
+        let proto = init_protocol_globals(dh)?;
 
         Ok(Self {
             compositor_state: CompositorState::new::<Self>(dh),
@@ -191,6 +195,8 @@ impl KynexState {
             single_pixel_buffer_state: proto.single_pixel_buffer_state,
             content_type_state: proto.content_type_state,
             tearing_control_state: proto.tearing_control_state,
+            idle_notifier_state: proto.idle_notifier_state,
+            idle_loop: Some(proto.idle_loop),
             config: kx_config::Config::default(),
         })
     }
@@ -394,9 +400,11 @@ struct ProtocolGlobals {
     single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
     content_type_state: smithay::wayland::content_type::ContentTypeState,
     tearing_control_state: crate::tearing_control::TearingControlState,
+    idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<KynexState>,
+    idle_loop: smithay::reexports::calloop::EventLoop<'static, KynexState>,
 }
 
-fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
+fn init_protocol_globals(dh: &DisplayHandle) -> Result<ProtocolGlobals, ShellError> {
     let mut dmabuf_state = DmabufState::new();
     let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
     let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
@@ -416,8 +424,9 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
     let single_pixel_buffer_state = crate::single_pixel_buffer::init_single_pixel_buffer_global(dh);
     let content_type_state = crate::content_type::init_content_type_global(dh);
     let tearing_control_state = crate::tearing_control::init_tearing_control_global(dh);
+    let (idle_notifier_state, idle_loop) = crate::idle_notify::init_idle_notify_global(dh)?;
 
-    ProtocolGlobals {
+    Ok(ProtocolGlobals {
         dmabuf_state,
         dmabuf_global,
         drm_syncobj_state,
@@ -436,7 +445,9 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         single_pixel_buffer_state,
         content_type_state,
         tearing_control_state,
-    }
+        idle_notifier_state,
+        idle_loop,
+    })
 }
 
 fn init_seat(dh: &DisplayHandle) -> Result<(SeatState<KynexState>, Seat<KynexState>), ShellError> {

@@ -21,6 +21,7 @@ pub mod fractional_scale;
 pub mod frame_clock;
 pub mod grab;
 pub mod idle_inhibit;
+pub mod idle_notify;
 pub mod input_method;
 pub mod layer_shell;
 pub mod nested;
@@ -63,6 +64,7 @@ pub use grab::{
     try_start_compositor_grab,
 };
 pub use idle_inhibit::init_idle_inhibit_global;
+pub use idle_notify::init_idle_notify_global;
 pub use input_method::init_input_method_global;
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
