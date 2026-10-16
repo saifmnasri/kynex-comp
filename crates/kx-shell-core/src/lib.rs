@@ -8,7 +8,9 @@
 
 pub mod action;
 pub mod activation;
+pub mod alpha_modifier;
 pub mod client;
+pub mod content_type;
 pub mod cursor_shape;
 pub mod data_device;
 pub mod decoration;
@@ -20,16 +22,20 @@ pub mod fractional_scale;
 pub mod frame_clock;
 pub mod grab;
 pub mod idle_inhibit;
+pub mod idle_notify;
 pub mod input_method;
 pub mod layer_shell;
 pub mod nested;
 pub mod output;
 pub mod pointer_constraints;
 pub mod presentation;
+pub mod primary_selection;
 pub mod relative_pointer;
 pub mod session_lock;
+pub mod single_pixel_buffer;
 pub mod state;
 pub mod syncobj;
+pub mod tearing_control;
 pub mod text_input;
 pub mod viewporter;
 pub mod window;
@@ -39,7 +45,9 @@ pub mod xdg_shell;
 pub mod fault;
 
 pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
+pub use alpha_modifier::init_alpha_modifier_global;
 pub use client::{ClientLimits, ClientState};
+pub use content_type::init_content_type_global;
 pub use cursor_shape::init_cursor_shape_global;
 pub use dmabuf::{MAX_DMABUF_DIMENSION, default_dmabuf_formats, init_dmabuf_global};
 pub use drm::{
@@ -58,13 +66,17 @@ pub use grab::{
     try_start_compositor_grab,
 };
 pub use idle_inhibit::init_idle_inhibit_global;
+pub use idle_notify::init_idle_notify_global;
 pub use input_method::init_input_method_global;
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
 pub use presentation::{init_presentation_global, post_presentation_feedback};
+pub use primary_selection::init_primary_selection_global;
 pub use relative_pointer::init_relative_pointer_global;
 pub use session_lock::init_session_lock_global;
+pub use single_pixel_buffer::init_single_pixel_buffer_global;
 pub use state::KynexState;
 pub use syncobj::init_drm_syncobj_global;
+pub use tearing_control::init_tearing_control_global;
 pub use text_input::init_text_input_global;
 pub use viewporter::init_viewporter_global;

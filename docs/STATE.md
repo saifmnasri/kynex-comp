@@ -2,11 +2,19 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4E: Session Control & Telemetry — DONE)
-**Last updated:** 2026-10-16 — Milestone 4E (`ext_session_lock_v1`, `ext_foreign_toplevel_list_v1`, `wp_presentation`, `zwp_idle_inhibit_v1`) completed and verified 100% on `feat/phase-4e-session-telemetry`. Ready for push and merge to `dev` and `main`.
+**Current phase:** 5 — XWayland (Phase 4 — Real-App Protocol Completeness — CLOSED)
+**Last updated:** 2026-10-16 — Milestone 4F (`wp_primary_selection`, `wp_single_pixel_buffer`, `wp_content_type_v1`, `wp_tearing_control_v1`, `ext_idle_notifier_v1`, `wp_alpha_modifier_v1`) completed and Phase 4 gate closed on branch `feat/phase-4f-extended-protocols`. Ready for merge to `dev` and `main`.
 
 ## Done
-- **Phase 4 (Real-App Protocol Completeness):**
+- **Phase 4 (Real-App Protocol Completeness) — CLOSED:**
+  - **Milestone 4F (Extended Quality Protocols) — DONE:**
+    - Step 4F.1: Primary selection protocol handler in `crates/kx-shell-core/src/primary_selection.rs` (`zwp_primary_selection_device_manager_v1`) implementing `init_primary_selection_global`, `PrimarySelectionHandler`, focus-synchronized offer updates via `SeatHandler::focus_changed` per Rule 05, and integration tests in `crates/kx-shell-core/tests/primary_selection_client.rs` verifying global advertisement, binding, and device creation.
+    - Step 4F.2: Single pixel buffer protocol handler in `crates/kx-shell-core/src/single_pixel_buffer.rs` (`wp_single_pixel_buffer_manager_v1`) implementing `init_single_pixel_buffer_global`, `SinglePixelBufferHandler`, 1x1 32-bit RGBA buffer creation, and integration tests in `crates/kx-shell-core/tests/single_pixel_buffer_client.rs` verifying global advertisement, binding, and 1x1 buffer allocation.
+    - Step 4F.3: Content type protocol handler in `crates/kx-shell-core/src/content_type.rs` (`wp_content_type_manager_v1` and `wp_content_type_v1`) implementing `init_content_type_global`, `delegate_content_type!(KynexState)`, cached surface state storage, single-attachment enforcement, and integration tests in `crates/kx-shell-core/tests/content_type_client.rs` verifying global advertisement, binding, content type hint commit, destroy, and duplicate attachment rejection (`already_constructed`).
+    - Step 4F.4: Tearing control protocol handler in `crates/kx-shell-core/src/tearing_control.rs` (`wp_tearing_control_manager_v1` and `wp_tearing_control_v1`) implementing `init_tearing_control_global`, `delegate_tearing_control!(KynexState)`, presentation hint storage in surface cached state, and integration tests in `crates/kx-shell-core/tests/tearing_control_client.rs` verifying global advertisement, binding, presentation hint commit, destroy, and duplicate attachment error (`tearing_control_exists`).
+    - Step 4F.5: Idle notifier protocol handler in `crates/kx-shell-core/src/idle_notifier.rs` (`ext_idle_notifier_v1` and `ext_idle_notification_v1`) implementing `init_idle_notifier_global`, `IdleNotifierHandler`, seat idle timer registration via non-blocking Calloop timer sources, user activity resumption (`resumed`), and integration tests in `crates/kx-shell-core/tests/idle_notify_client.rs` verifying global advertisement, notification object creation, and timeout dispatch.
+    - Step 4F.6: Alpha modifier protocol handler in `crates/kx-shell-core/src/alpha_modifier.rs` (`wp_alpha_modifier_v1` and `wp_alpha_modifier_surface_v1`) implementing `init_alpha_modifier_global`, `delegate_alpha_modifier!(KynexState)`, cached surface multiplier state, and integration tests in `crates/kx-shell-core/tests/alpha_modifier_client.rs` verifying global advertisement, multiplier commit, clean destruction, and duplicate attachment rejection (`already_constructed`).
+    - Step 4F.7: Phase 4 Closure Gate & Documentation: updated `docs/ROADMAP.md`, `docs/SECURITY.md`, and `docs/STATE.md`. All verification gates green.
   - **Milestone 4E (Session Control & Telemetry) — DONE:**
     - Step 4E.1: Session lock protocol handler in `crates/kx-shell-core/src/session_lock.rs` (`ext_session_lock_v1` and `ext_session_lock_manager_v1`) implementing `init_session_lock_global`, `SessionLockHandler`, privileged socket peer credential gating (`is_session_lock_allowed`), fail-closed screen blanking and lock surface presentation, and integration tests in `crates/kx-shell-core/tests/session_lock_client.rs` verifying global filtering for unauthorized clients, authorized lock lifecycle, and fail-closed persistence upon client disconnect.
     - Step 4E.2: Foreign toplevel list protocol handler in `crates/kx-shell-core/src/foreign_toplevel.rs` (`ext_foreign_toplevel_list_v1` and `ext_foreign_toplevel_handle_v1`) implementing `init_foreign_toplevel_list_global`, `ForeignToplevelListHandler`, restricted socket peer credential filtering (`is_foreign_toplevel_allowed`), window lifecycle event dispatch (identifier, title, app_id, state, done, closed), and integration tests in `crates/kx-shell-core/tests/foreign_toplevel_client.rs`.
@@ -160,14 +168,20 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- None (Milestone 4E completed and verified). Ready for push and merge to `dev` and `main`.
+- None (Phase 4 completed and verified). Ready for review and merge of `feat/phase-4f-extended-protocols` to `dev` and `main`.
 
 ## Next
-- Merge `feat/phase-4e-session-telemetry` to `dev`, push `dev`, merge `dev` to `main`, and push `origin/main`.
-- Begin Phase 5 — Window Management & Shell Mechanics (Tiling, Workspaces, Animations, Full IPC Server).
+- Merge `feat/phase-4f-extended-protocols` to `dev`, push `dev`, merge `dev` to `main`, and push `origin/main`.
+- Begin Phase 5 — XWayland (Supervised rootless XWayland, X11 window manager, clipboard bridge, scaling).
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-shell-core --test alpha_modifier_client`
+- `cargo test -p kx-shell-core --test idle_notify_client`
+- `cargo test -p kx-shell-core --test tearing_control_client`
+- `cargo test -p kx-shell-core --test content_type_client`
+- `cargo test -p kx-shell-core --test single_pixel_buffer_client`
+- `cargo test -p kx-shell-core --test primary_selection_client`
 - `cargo test -p kx-shell-core --test idle_inhibit_client`
 - `cargo test -p kx-shell-core --test presentation_client`
 - `cargo test -p kx-shell-core --test foreign_toplevel_client`

@@ -117,6 +117,21 @@ pub struct KynexState {
     pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     /// Surfaces holding active idle inhibitors.
     pub idle_inhibitors: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+    /// Primary selection protocol state (`zwp_primary_selection_device_manager_v1`).
+    pub primary_selection_state:
+        smithay::wayland::selection::primary_selection::PrimarySelectionState,
+    /// Single-pixel buffer protocol state (`wp_single_pixel_buffer_manager_v1`).
+    pub single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
+    /// Content type protocol state (`wp_content_type_manager_v1`).
+    pub content_type_state: smithay::wayland::content_type::ContentTypeState,
+    /// Tearing control protocol state (`wp_tearing_control_manager_v1`).
+    pub tearing_control_state: crate::tearing_control::TearingControlState,
+    /// Idle notifier protocol state (`ext_idle_notifier_v1`).
+    pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<Self>,
+    /// Dedicated internal event loop for idle timers.
+    pub idle_loop: Option<smithay::reexports::calloop::EventLoop<'static, Self>>,
+    /// Alpha modifier protocol state (`wp_alpha_modifier_v1`).
+    pub alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -136,7 +151,7 @@ impl KynexState {
         let _global = output.create_global::<Self>(dh);
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
-        let proto = init_protocol_globals(dh);
+        let proto = init_protocol_globals(dh)?;
 
         Ok(Self {
             compositor_state: CompositorState::new::<Self>(dh),
@@ -178,6 +193,13 @@ impl KynexState {
             presentation_state: proto.presentation_state,
             idle_inhibit_state: proto.idle_inhibit_state,
             idle_inhibitors: Vec::new(),
+            primary_selection_state: proto.primary_selection_state,
+            single_pixel_buffer_state: proto.single_pixel_buffer_state,
+            content_type_state: proto.content_type_state,
+            tearing_control_state: proto.tearing_control_state,
+            idle_notifier_state: proto.idle_notifier_state,
+            idle_loop: Some(proto.idle_loop),
+            alpha_modifier_state: proto.alpha_modifier_state,
             config: kx_config::Config::default(),
         })
     }
@@ -319,11 +341,24 @@ impl SeatHandler for KynexState {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+        use smithay::reexports::wayland_server::Resource;
         use smithay::wayland::text_input::TextInputSeat;
         let text_input = seat.text_input();
         text_input.leave();
         text_input.set_focus(focused.cloned());
         text_input.enter();
+
+        let client = focused.and_then(Resource::client);
+        smithay::wayland::selection::data_device::set_data_device_focus(
+            &self.display_handle,
+            seat,
+            client.clone(),
+        );
+        smithay::wayland::selection::primary_selection::set_primary_focus(
+            &self.display_handle,
+            seat,
+            client,
+        );
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
@@ -364,9 +399,16 @@ struct ProtocolGlobals {
     foreign_toplevel_list_state: smithay::wayland::foreign_toplevel_list::ForeignToplevelListState,
     presentation_state: smithay::wayland::presentation::PresentationState,
     idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
+    primary_selection_state: smithay::wayland::selection::primary_selection::PrimarySelectionState,
+    single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
+    content_type_state: smithay::wayland::content_type::ContentTypeState,
+    tearing_control_state: crate::tearing_control::TearingControlState,
+    idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<KynexState>,
+    idle_loop: smithay::reexports::calloop::EventLoop<'static, KynexState>,
+    alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
 }
 
-fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
+fn init_protocol_globals(dh: &DisplayHandle) -> Result<ProtocolGlobals, ShellError> {
     let mut dmabuf_state = DmabufState::new();
     let dmabuf_global = crate::dmabuf::init_dmabuf_global(dh, &mut dmabuf_state, None, None);
     let drm_syncobj_state = crate::syncobj::init_drm_syncobj_global(dh, None);
@@ -382,8 +424,14 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         crate::foreign_toplevel::init_foreign_toplevel_list_global(dh);
     let presentation_state = crate::presentation::init_presentation_global(dh);
     let idle_inhibit_state = crate::idle_inhibit::init_idle_inhibit_global(dh);
+    let primary_selection_state = crate::primary_selection::init_primary_selection_global(dh);
+    let single_pixel_buffer_state = crate::single_pixel_buffer::init_single_pixel_buffer_global(dh);
+    let content_type_state = crate::content_type::init_content_type_global(dh);
+    let tearing_control_state = crate::tearing_control::init_tearing_control_global(dh);
+    let (idle_notifier_state, idle_loop) = crate::idle_notify::init_idle_notify_global(dh)?;
+    let alpha_modifier_state = crate::alpha_modifier::init_alpha_modifier_global(dh);
 
-    ProtocolGlobals {
+    Ok(ProtocolGlobals {
         dmabuf_state,
         dmabuf_global,
         drm_syncobj_state,
@@ -398,7 +446,14 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         foreign_toplevel_list_state,
         presentation_state,
         idle_inhibit_state,
-    }
+        primary_selection_state,
+        single_pixel_buffer_state,
+        content_type_state,
+        tearing_control_state,
+        idle_notifier_state,
+        idle_loop,
+        alpha_modifier_state,
+    })
 }
 
 fn init_seat(dh: &DisplayHandle) -> Result<(SeatState<KynexState>, Seat<KynexState>), ShellError> {
