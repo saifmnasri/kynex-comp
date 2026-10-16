@@ -130,6 +130,8 @@ pub struct KynexState {
     pub idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<Self>,
     /// Dedicated internal event loop for idle timers.
     pub idle_loop: Option<smithay::reexports::calloop::EventLoop<'static, Self>>,
+    /// Alpha modifier protocol state (`wp_alpha_modifier_v1`).
+    pub alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -197,6 +199,7 @@ impl KynexState {
             tearing_control_state: proto.tearing_control_state,
             idle_notifier_state: proto.idle_notifier_state,
             idle_loop: Some(proto.idle_loop),
+            alpha_modifier_state: proto.alpha_modifier_state,
             config: kx_config::Config::default(),
         })
     }
@@ -402,6 +405,7 @@ struct ProtocolGlobals {
     tearing_control_state: crate::tearing_control::TearingControlState,
     idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<KynexState>,
     idle_loop: smithay::reexports::calloop::EventLoop<'static, KynexState>,
+    alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
 }
 
 fn init_protocol_globals(dh: &DisplayHandle) -> Result<ProtocolGlobals, ShellError> {
@@ -425,6 +429,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> Result<ProtocolGlobals, ShellErr
     let content_type_state = crate::content_type::init_content_type_global(dh);
     let tearing_control_state = crate::tearing_control::init_tearing_control_global(dh);
     let (idle_notifier_state, idle_loop) = crate::idle_notify::init_idle_notify_global(dh)?;
+    let alpha_modifier_state = crate::alpha_modifier::init_alpha_modifier_global(dh);
 
     Ok(ProtocolGlobals {
         dmabuf_state,
@@ -447,6 +452,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> Result<ProtocolGlobals, ShellErr
         tearing_control_state,
         idle_notifier_state,
         idle_loop,
+        alpha_modifier_state,
     })
 }
 

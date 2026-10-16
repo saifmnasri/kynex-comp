@@ -8,6 +8,7 @@
 
 pub mod action;
 pub mod activation;
+pub mod alpha_modifier;
 pub mod client;
 pub mod content_type;
 pub mod cursor_shape;
@@ -44,6 +45,7 @@ pub mod xdg_shell;
 pub mod fault;
 
 pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
+pub use alpha_modifier::init_alpha_modifier_global;
 pub use client::{ClientLimits, ClientState};
 pub use content_type::init_content_type_global;
 pub use cursor_shape::init_cursor_shape_global;
