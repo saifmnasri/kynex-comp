@@ -23,6 +23,7 @@ pub mod input_method;
 pub mod layer_shell;
 pub mod nested;
 pub mod pointer_constraints;
+pub mod presentation;
 pub mod relative_pointer;
 pub mod session_lock;
 pub mod state;
@@ -57,6 +58,7 @@ pub use grab::{
 pub use input_method::init_input_method_global;
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
+pub use presentation::{init_presentation_global, post_presentation_feedback};
 pub use relative_pointer::init_relative_pointer_global;
 pub use session_lock::init_session_lock_global;
 pub use state::KynexState;

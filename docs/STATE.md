@@ -143,6 +143,7 @@
   - **Milestone 4E (Session Control & Telemetry) — IN PROGRESS:**
     - Step 4E.1 — DONE: `ext_session_lock_v1` session locking protocol handler (`SessionLockManagerState`, `SessionLockHandler`), allow-list security filter (`is_session_lock_allowed`, `can_view` filtered global), and fail-closed guarantee per Rule 05 (compositor remains locked if client crashes or disconnects without explicit unlock). Comprehensive integration test suite in `crates/kx-shell-core/tests/session_lock_client.rs` (4 scenarios: unprivileged global hidden, privileged global advertised, lock/unlock lifecycle, and fail-closed persistence on client disconnect).
     - Step 4E.2 — DONE: `ext_foreign_toplevel_list_v1` foreign toplevel management protocol handler (`ForeignToplevelListState`, `ForeignToplevelListHandler`), allow-list security filter (`is_foreign_toplevel_allowed`, `can_view` filtered global), window map/unmap/title/app_id synchronization with `WindowManager`. Comprehensive integration test suite in `crates/kx-shell-core/tests/foreign_toplevel_client.rs` (3 scenarios: unprivileged global hidden, privileged global advertised, and full toplevel window lifecycle with title/app_id mutations and closed events).
+    - Step 4E.3 — DONE: `wp_presentation` feedback with real monotonic vblank timestamps (`post_presentation_feedback` with `Time::<Monotonic>`, vsync flag, refresh duration from output mode, and feedback collection across window elements and layer surfaces). Comprehensive integration test suite in `crates/kx-shell-core/tests/presentation_client.rs` (3 scenarios: clock ID advertisement, presentation feedback presented on window surface, and discarded feedback on superseded commit).
 
 ## Pending-hardware items (Phase 2)
 The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
@@ -154,14 +155,15 @@ The following hardware-dependent verification items are deferred until physical 
 
 ## In progress
 - **Milestone 4E (Session Control & Telemetry):**
-  - Step 4E.3: `wp_presentation_time` feedback with real vblank timestamps.
+  - Step 4E.4: `zwp_idle_inhibit_v1` and `ext_idle_notify_v1`.
 
 ## Next
 - **Milestone 4E (Session Control & Telemetry):**
-  - Step 4E.4: `zwp_idle_inhibit_v1` and `ext_idle_notify_v1`.
+  - Full verification gate (`just check`), merge `feat/phase-4e-session-telemetry` to `dev`, push `dev`, merge `dev` to `main`, and push `origin/main`.
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-shell-core --test presentation_client`
 - `cargo test -p kx-shell-core --test foreign_toplevel_client`
 - `cargo test -p kx-shell-core --test session_lock_client`
 - `cargo test -p kx-shell-core --test text_input_client`

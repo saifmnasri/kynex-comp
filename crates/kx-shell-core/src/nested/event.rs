@@ -270,6 +270,12 @@ impl NestedLoopState {
                 Some(output.clone())
             });
         }
+        crate::presentation::post_presentation_feedback(
+            &self.state.space,
+            output,
+            elapsed,
+            self.frame_count,
+        );
     }
 
     fn check_fault_injection(&mut self) -> Result<(), ShellError> {

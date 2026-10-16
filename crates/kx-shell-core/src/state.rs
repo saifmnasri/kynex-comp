@@ -111,6 +111,8 @@ pub struct KynexState {
         kx_layout::WindowId,
         smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle,
     >,
+    /// Presentation time protocol state (`wp_presentation`).
+    pub presentation_state: smithay::wayland::presentation::PresentationState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -169,6 +171,7 @@ impl KynexState {
         let foreign_toplevel_list_state =
             crate::foreign_toplevel::init_foreign_toplevel_list_global(dh);
         let foreign_toplevel_handles = HashMap::new();
+        let presentation_state = crate::presentation::init_presentation_global(dh);
 
         Ok(Self {
             compositor_state,
@@ -205,6 +208,7 @@ impl KynexState {
             lock_surfaces: Vec::new(),
             foreign_toplevel_list_state,
             foreign_toplevel_handles,
+            presentation_state,
             config,
         })
     }
