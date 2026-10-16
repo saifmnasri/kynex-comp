@@ -117,6 +117,9 @@ pub struct KynexState {
     pub idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     /// Surfaces holding active idle inhibitors.
     pub idle_inhibitors: Vec<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+    /// Primary selection protocol state (`zwp_primary_selection_device_manager_v1`).
+    pub primary_selection_state:
+        smithay::wayland::selection::primary_selection::PrimarySelectionState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -178,6 +181,7 @@ impl KynexState {
             presentation_state: proto.presentation_state,
             idle_inhibit_state: proto.idle_inhibit_state,
             idle_inhibitors: Vec::new(),
+            primary_selection_state: proto.primary_selection_state,
             config: kx_config::Config::default(),
         })
     }
@@ -319,11 +323,24 @@ impl SeatHandler for KynexState {
     }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+        use smithay::reexports::wayland_server::Resource;
         use smithay::wayland::text_input::TextInputSeat;
         let text_input = seat.text_input();
         text_input.leave();
         text_input.set_focus(focused.cloned());
         text_input.enter();
+
+        let client = focused.and_then(Resource::client);
+        smithay::wayland::selection::data_device::set_data_device_focus(
+            &self.display_handle,
+            seat,
+            client.clone(),
+        );
+        smithay::wayland::selection::primary_selection::set_primary_focus(
+            &self.display_handle,
+            seat,
+            client,
+        );
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
@@ -364,6 +381,7 @@ struct ProtocolGlobals {
     foreign_toplevel_list_state: smithay::wayland::foreign_toplevel_list::ForeignToplevelListState,
     presentation_state: smithay::wayland::presentation::PresentationState,
     idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
+    primary_selection_state: smithay::wayland::selection::primary_selection::PrimarySelectionState,
 }
 
 fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
@@ -382,6 +400,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         crate::foreign_toplevel::init_foreign_toplevel_list_global(dh);
     let presentation_state = crate::presentation::init_presentation_global(dh);
     let idle_inhibit_state = crate::idle_inhibit::init_idle_inhibit_global(dh);
+    let primary_selection_state = crate::primary_selection::init_primary_selection_global(dh);
 
     ProtocolGlobals {
         dmabuf_state,
@@ -398,6 +417,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         foreign_toplevel_list_state,
         presentation_state,
         idle_inhibit_state,
+        primary_selection_state,
     }
 }
 
