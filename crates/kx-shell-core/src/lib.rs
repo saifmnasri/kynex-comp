@@ -9,6 +9,7 @@
 pub mod action;
 pub mod activation;
 pub mod client;
+pub mod content_type;
 pub mod cursor_shape;
 pub mod data_device;
 pub mod decoration;
@@ -42,6 +43,7 @@ pub mod fault;
 
 pub use action::{activate_and_focus_window, clear_window_focus, execute_compositor_action};
 pub use client::{ClientLimits, ClientState};
+pub use content_type::init_content_type_global;
 pub use cursor_shape::init_cursor_shape_global;
 pub use dmabuf::{MAX_DMABUF_DIMENSION, default_dmabuf_formats, init_dmabuf_global};
 pub use drm::{

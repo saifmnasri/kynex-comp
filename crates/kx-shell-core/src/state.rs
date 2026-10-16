@@ -122,6 +122,8 @@ pub struct KynexState {
         smithay::wayland::selection::primary_selection::PrimarySelectionState,
     /// Single-pixel buffer protocol state (`wp_single_pixel_buffer_manager_v1`).
     pub single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
+    /// Content type protocol state (`wp_content_type_manager_v1`).
+    pub content_type_state: smithay::wayland::content_type::ContentTypeState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -185,6 +187,7 @@ impl KynexState {
             idle_inhibitors: Vec::new(),
             primary_selection_state: proto.primary_selection_state,
             single_pixel_buffer_state: proto.single_pixel_buffer_state,
+            content_type_state: proto.content_type_state,
             config: kx_config::Config::default(),
         })
     }
@@ -386,6 +389,7 @@ struct ProtocolGlobals {
     idle_inhibit_state: smithay::wayland::idle_inhibit::IdleInhibitManagerState,
     primary_selection_state: smithay::wayland::selection::primary_selection::PrimarySelectionState,
     single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
+    content_type_state: smithay::wayland::content_type::ContentTypeState,
 }
 
 fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
@@ -406,6 +410,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
     let idle_inhibit_state = crate::idle_inhibit::init_idle_inhibit_global(dh);
     let primary_selection_state = crate::primary_selection::init_primary_selection_global(dh);
     let single_pixel_buffer_state = crate::single_pixel_buffer::init_single_pixel_buffer_global(dh);
+    let content_type_state = crate::content_type::init_content_type_global(dh);
 
     ProtocolGlobals {
         dmabuf_state,
@@ -424,6 +429,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         idle_inhibit_state,
         primary_selection_state,
         single_pixel_buffer_state,
+        content_type_state,
     }
 }
 
