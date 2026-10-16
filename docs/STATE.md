@@ -2,11 +2,16 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4E: Session Control & Telemetry)
-**Last updated:** 2026-10-16 — Step 4E.2 (`ext_foreign_toplevel_list_v1`) completed on `feat/phase-4e-session-telemetry`. Full verification gate green (`just check`, tests passing). Advancing to Step 4E.3 (`wp_presentation_time`).
+**Current phase:** 4 — Real-App Protocol Completeness (Milestone 4E: Session Control & Telemetry — DONE)
+**Last updated:** 2026-10-16 — Milestone 4E (`ext_session_lock_v1`, `ext_foreign_toplevel_list_v1`, `wp_presentation`, `zwp_idle_inhibit_v1`) completed and verified 100% on `feat/phase-4e-session-telemetry`. Ready for push and merge to `dev` and `main`.
 
 ## Done
 - **Phase 4 (Real-App Protocol Completeness):**
+  - **Milestone 4E (Session Control & Telemetry) — DONE:**
+    - Step 4E.1: Session lock protocol handler in `crates/kx-shell-core/src/session_lock.rs` (`ext_session_lock_v1` and `ext_session_lock_manager_v1`) implementing `init_session_lock_global`, `SessionLockHandler`, privileged socket peer credential gating (`is_session_lock_allowed`), fail-closed screen blanking and lock surface presentation, and integration tests in `crates/kx-shell-core/tests/session_lock_client.rs` verifying global filtering for unauthorized clients, authorized lock lifecycle, and fail-closed persistence upon client disconnect.
+    - Step 4E.2: Foreign toplevel list protocol handler in `crates/kx-shell-core/src/foreign_toplevel.rs` (`ext_foreign_toplevel_list_v1` and `ext_foreign_toplevel_handle_v1`) implementing `init_foreign_toplevel_list_global`, `ForeignToplevelListHandler`, restricted socket peer credential filtering (`is_foreign_toplevel_allowed`), window lifecycle event dispatch (identifier, title, app_id, state, done, closed), and integration tests in `crates/kx-shell-core/tests/foreign_toplevel_client.rs`.
+    - Step 4E.3: Presentation time protocol handler in `crates/kx-shell-core/src/presentation.rs` (`wp_presentation` and `wp_presentation_feedback`) implementing `init_presentation_global`, `delegate_presentation!(KynexState)`, `post_presentation_feedback` traversing mapped windows and layer surfaces, monotonic clock ID advertisement, and integration tests in `crates/kx-shell-core/tests/presentation_client.rs` verifying global binding, clock id event, and presentation feedback callbacks.
+    - Step 4E.4: Wayland idle inhibitor protocol handler in `crates/kx-shell-core/src/idle_inhibit.rs` (`zwp_idle_inhibit_unstable_v1`) implementing `init_idle_inhibit_global`, `IdleInhibitHandler` on `KynexState`, alive surface retention, `is_idle_inhibited()` query helper, and integration tests in `crates/kx-shell-core/tests/idle_inhibit_client.rs` verifying global advertisement, inhibitor creation and destroy lifecycle, and state tracking.
   - **Milestone 4D (Text Input & IME):**
     - Step 4D.1: Server-side text input protocol handler in `crates/kx-shell-core/src/text_input.rs` (`zwp_text_input_manager_v3` and `zwp_text_input_v3`) implementing `init_text_input_global`, `delegate_text_input_manager!(KynexState)`, `SeatHandler::focus_changed` forwarding to `seat.text_input()` (`leave()`, `set_focus()`, `enter()`), `docs/SECURITY.md` table update (Public global), and integration tests in `crates/kx-shell-core/tests/text_input_client.rs` verifying global advertisement, version 1 binding, lifecycle requests (enable, set_surrounding_text, set_cursor_rectangle, commit, disable, destroy), and focus enter/leave event delivery.
   - **Milestone 4C (Cursor & Pointer Control) — DONE:**
@@ -140,10 +145,11 @@
     - Step 4D.1: `zwp_text_input_v3` protocol handler (`TextInputManagerState`, `TextInputSeat`, focus tracking on enter/leave, IME request routing).
     - Step 4D.2: `zwp_input_method_v2` protocol handler (`InputMethodManagerState`, `InputMethodHandler`, `InputMethodHandle`, non-panicking `parent_geometry`), privileged allow-list gating (`is_input_method_allowed`, `can_view` filtered global).
     - Full integration tests in `crates/kx-shell-core/tests/text_input_client.rs` (3 scenarios: manager advertisement, focus enter/leave, enable/disable roundtrips) and `crates/kx-shell-core/tests/input_method_client.rs` (3 scenarios: unprivileged hiding, privileged advertisement, non-panicking parent geometry on unmapped surface).
-  - **Milestone 4E (Session Control & Telemetry) — IN PROGRESS:**
+  - **Milestone 4E (Session Control & Telemetry) — DONE:**
     - Step 4E.1 — DONE: `ext_session_lock_v1` session locking protocol handler (`SessionLockManagerState`, `SessionLockHandler`), allow-list security filter (`is_session_lock_allowed`, `can_view` filtered global), and fail-closed guarantee per Rule 05 (compositor remains locked if client crashes or disconnects without explicit unlock). Comprehensive integration test suite in `crates/kx-shell-core/tests/session_lock_client.rs` (4 scenarios: unprivileged global hidden, privileged global advertised, lock/unlock lifecycle, and fail-closed persistence on client disconnect).
     - Step 4E.2 — DONE: `ext_foreign_toplevel_list_v1` foreign toplevel management protocol handler (`ForeignToplevelListState`, `ForeignToplevelListHandler`), allow-list security filter (`is_foreign_toplevel_allowed`, `can_view` filtered global), window map/unmap/title/app_id synchronization with `WindowManager`. Comprehensive integration test suite in `crates/kx-shell-core/tests/foreign_toplevel_client.rs` (3 scenarios: unprivileged global hidden, privileged global advertised, and full toplevel window lifecycle with title/app_id mutations and closed events).
     - Step 4E.3 — DONE: `wp_presentation` feedback with real monotonic vblank timestamps (`post_presentation_feedback` with `Time::<Monotonic>`, vsync flag, refresh duration from output mode, and feedback collection across window elements and layer surfaces). Comprehensive integration test suite in `crates/kx-shell-core/tests/presentation_client.rs` (3 scenarios: clock ID advertisement, presentation feedback presented on window surface, and discarded feedback on superseded commit).
+    - Step 4E.4 — DONE: Wayland idle inhibitor protocol handler in `crates/kx-shell-core/src/idle_inhibit.rs` (`zwp_idle_inhibit_unstable_v1`) implementing `init_idle_inhibit_global`, `IdleInhibitHandler` on `KynexState`, alive surface retention, `is_idle_inhibited()` query helper, and integration tests in `crates/kx-shell-core/tests/idle_inhibit_client.rs` verifying global advertisement, inhibitor creation and destroy lifecycle, and state tracking.
 
 ## Pending-hardware items (Phase 2)
 The following hardware-dependent verification items are deferred until physical test hardware is provisioned:
@@ -154,15 +160,15 @@ The following hardware-dependent verification items are deferred until physical 
 5. **Multi-GPU hybrid scanout:** Secondary GPU scanout and render offload on dual-GPU hybrid laptops (integrated Intel/AMD + discrete NVIDIA/AMD).
 
 ## In progress
-- **Milestone 4E (Session Control & Telemetry):**
-  - Step 4E.4: `zwp_idle_inhibit_v1` and `ext_idle_notify_v1`.
+- None (Milestone 4E completed and verified). Ready for push and merge to `dev` and `main`.
 
 ## Next
-- **Milestone 4E (Session Control & Telemetry):**
-  - Full verification gate (`just check`), merge `feat/phase-4e-session-telemetry` to `dev`, push `dev`, merge `dev` to `main`, and push `origin/main`.
+- Merge `feat/phase-4e-session-telemetry` to `dev`, push `dev`, merge `dev` to `main`, and push `origin/main`.
+- Begin Phase 5 — Window Management & Shell Mechanics (Tiling, Workspaces, Animations, Full IPC Server).
 
 ## Verify commands
 - `just check`
+- `cargo test -p kx-shell-core --test idle_inhibit_client`
 - `cargo test -p kx-shell-core --test presentation_client`
 - `cargo test -p kx-shell-core --test foreign_toplevel_client`
 - `cargo test -p kx-shell-core --test session_lock_client`

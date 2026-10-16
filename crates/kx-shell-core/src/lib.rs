@@ -19,9 +19,11 @@ pub mod foreign_toplevel;
 pub mod fractional_scale;
 pub mod frame_clock;
 pub mod grab;
+pub mod idle_inhibit;
 pub mod input_method;
 pub mod layer_shell;
 pub mod nested;
+pub mod output;
 pub mod pointer_constraints;
 pub mod presentation;
 pub mod relative_pointer;
@@ -55,6 +57,7 @@ pub use grab::{
     modifiers_to_key_modifiers, start_compositor_move_grab, start_compositor_resize_grab,
     try_start_compositor_grab,
 };
+pub use idle_inhibit::init_idle_inhibit_global;
 pub use input_method::init_input_method_global;
 pub use nested::{DEFAULT_BG_COLOR, NestedConfig, NestedOptions, run_nested};
 pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_pointer_constraint};
