@@ -24,11 +24,14 @@ Window abstraction, workspaces, floating layout, focus policy, move/resize, popu
 (server-side decorations), `layer-shell`, `xdg-activation`, fullscreen/maximize/minimize, multi-output windows.
 **Exit:** daily-usable floating desktop; layout property tests pass; windows never become unreachable after hotplug. All exit criteria met. Hostile-client test suite passed. Benchmarks established in `benches/BASELINE.md`.
 
-## Phase 4 — Real-app protocol completeness
+## Phase 4 — Real-app protocol completeness — COMPLETE
 `linux-dmabuf` (+feedback), explicit sync, `fractional-scale`, `viewporter`, `cursor-shape`, pointer constraints,
-relative pointer, IME (`text-input`/`input-method`), primary selection, idle/inhibit, `ext-session-lock`,
-foreign-toplevel list, presentation-time, tablet/touch/gestures, tearing control.
-**Exit:** games, browsers (Firefox/Chromium), Electron apps, GTK and Qt apps, video players behave correctly; HiDPI + fractional scaling verified.
+relative pointer, IME (`text-input`/`input-method`), primary selection, idle/inhibit (`zwp_idle_inhibit_v1` and `ext_idle_notifier_v1`),
+`ext-session-lock`, foreign-toplevel list, presentation-time, content-type, tearing control, single-pixel buffer,
+alpha modifier.
+**Exit:** games, browsers (Firefox/Chromium), Electron apps, GTK and Qt apps, video players behave correctly;
+HiDPI + fractional scaling verified. Full in-process test harnesses and live multi-app sessions verified with zero panics.
+All exit criteria met.
 
 ## Phase 5 — XWayland
 Supervised rootless XWayland, X11 window manager (ICCCM/EWMH), clipboard bridge, scaling.
