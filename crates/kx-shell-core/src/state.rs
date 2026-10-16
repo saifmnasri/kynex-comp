@@ -124,6 +124,8 @@ pub struct KynexState {
     pub single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
     /// Content type protocol state (`wp_content_type_manager_v1`).
     pub content_type_state: smithay::wayland::content_type::ContentTypeState,
+    /// Tearing control protocol state (`wp_tearing_control_manager_v1`).
+    pub tearing_control_state: crate::tearing_control::TearingControlState,
     /// Compositor configuration.
     pub config: kx_config::Config,
 }
@@ -188,6 +190,7 @@ impl KynexState {
             primary_selection_state: proto.primary_selection_state,
             single_pixel_buffer_state: proto.single_pixel_buffer_state,
             content_type_state: proto.content_type_state,
+            tearing_control_state: proto.tearing_control_state,
             config: kx_config::Config::default(),
         })
     }
@@ -390,6 +393,7 @@ struct ProtocolGlobals {
     primary_selection_state: smithay::wayland::selection::primary_selection::PrimarySelectionState,
     single_pixel_buffer_state: smithay::wayland::single_pixel_buffer::SinglePixelBufferState,
     content_type_state: smithay::wayland::content_type::ContentTypeState,
+    tearing_control_state: crate::tearing_control::TearingControlState,
 }
 
 fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
@@ -411,6 +415,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
     let primary_selection_state = crate::primary_selection::init_primary_selection_global(dh);
     let single_pixel_buffer_state = crate::single_pixel_buffer::init_single_pixel_buffer_global(dh);
     let content_type_state = crate::content_type::init_content_type_global(dh);
+    let tearing_control_state = crate::tearing_control::init_tearing_control_global(dh);
 
     ProtocolGlobals {
         dmabuf_state,
@@ -430,6 +435,7 @@ fn init_protocol_globals(dh: &DisplayHandle) -> ProtocolGlobals {
         primary_selection_state,
         single_pixel_buffer_state,
         content_type_state,
+        tearing_control_state,
     }
 }
 

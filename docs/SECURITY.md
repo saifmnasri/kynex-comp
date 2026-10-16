@@ -6,7 +6,7 @@ Authoritative rules: `.agents/rules/05-security.md`. This file records the threa
 
 | Global / IPC command | Class | Who may use it | Consent needed |
 |----------------------|-------|----------------|----------------|
-| `wl_compositor`, `wl_shm`, `xdg_wm_base`, `zxdg_decoration_manager_v1`, `xdg_activation_v1`, `zwp_linux_dmabuf_v1`, `zwp_linux_dmabuf_feedback_v1`, `wp_linux_drm_syncobj_manager_v1`, `wp_viewporter`, `wp_fractional_scale_manager_v1`, `wp_cursor_shape_manager_v1`, `zwp_relative_pointer_manager_v1`, `zwp_text_input_manager_v3`, `wp_presentation`, `zwp_primary_selection_device_manager_v1` (focus gated), `wp_single_pixel_buffer_manager_v1`, `wp_content_type_manager_v1` | Public | any client | no |
+| `wl_compositor`, `wl_shm`, `xdg_wm_base`, `zxdg_decoration_manager_v1`, `xdg_activation_v1`, `zwp_linux_dmabuf_v1`, `zwp_linux_dmabuf_feedback_v1`, `wp_linux_drm_syncobj_manager_v1`, `wp_viewporter`, `wp_fractional_scale_manager_v1`, `wp_cursor_shape_manager_v1`, `zwp_relative_pointer_manager_v1`, `zwp_text_input_manager_v3`, `wp_presentation`, `zwp_primary_selection_device_manager_v1` (focus gated), `wp_single_pixel_buffer_manager_v1`, `wp_content_type_manager_v1`, `wp_tearing_control_manager_v1` | Public | any client | no |
 | `zwlr_layer_shell_v1`, `zwp_pointer_constraints_v1` (focus gated), idle-inhibit, `ext_foreign_toplevel_list_v1` | Restricted | allow-listed or shell clients / active focus | no |
 | `screencopy` / image-copy-capture | Privileged | portal backend only | yes (portal prompt) |
 | `zwp_input_method_manager_v2`, data-control, virtual input, output-management, gamma | Privileged | allow-listed executables only | policy |
@@ -28,6 +28,8 @@ Authoritative rules: `.agents/rules/05-security.md`. This file records the threa
 - **2026-10-16 (Step 4F.1 Primary Selection Security Review):** Scope: `zwp_primary_selection_device_manager_v1` protocol handler and focus synchronization. Outcome: PASS. Classified as Public global per protocol roadmap; selection reading and offers are gated to active keyboard focus via `set_primary_focus` in `SeatHandler::focus_changed` per Rule 05, preventing clipboard snooping across unprivileged/unfocused clients.
 - **2026-10-16 (Step 4F.2 Single Pixel Buffer Security Review):** Scope: `wp_single_pixel_buffer_manager_v1` protocol handler and 1x1 buffer creation. Outcome: PASS. Classified as Public global per protocol roadmap; creates lightweight 1x1 32-bit RGBA buffers avoiding shm/dmabuf overhead; delegates to standard Smithay buffer management without panics, unbounded allocations, or privilege escalation.
 - **2026-10-16 (Step 4F.3 Content Type Security Review):** Scope: `wp_content_type_manager_v1` protocol handler and surface content type hints. Outcome: PASS. Classified as Public global per protocol roadmap; allows clients to communicate surface content hints (none, photo, video, game) via cached surface state for optimal display/processing; delegates to Smithay content-type handling with zero panics, bounds checks, or privilege leaks.
+- **2026-10-16 (Step 4F.4 Tearing Control Security Review):** Scope: `wp_tearing_control_manager_v1` protocol handler and presentation hints. Outcome: PASS. Classified as Public global per protocol roadmap; hints whether surface presentation prefers asynchronous flip/tearing vs vsync. Double-buffered in surface cached state, single-attachment enforcement posts `tearing_control_exists` protocol error on duplicate requests, and resources are cleanly reclaimed upon destroy without panics or memory leaks.
+
 
 
 
