@@ -382,7 +382,7 @@ pub(crate) fn register_event_sources(
                     if let Ok(creds) = client.get_credentials(&loop_state.display.handle()) {
                         client_data.inspect_and_cache_privilege(
                             &creds,
-                            &loop_state.state.config.privilege.layer_shell_allow,
+                            &loop_state.state.config.privilege,
                         );
                     }
                     tracing::info!(?client, "Accepted new Wayland client connection");

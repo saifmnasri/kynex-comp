@@ -25,6 +25,8 @@ pub struct ClientLimits {
     pub max_layer_surfaces: usize,
     /// Maximum number of concurrent activation tokens allowed per client.
     pub max_activation_tokens: usize,
+    /// Maximum number of concurrent active idle inhibitors allowed per client.
+    pub max_idle_inhibitors: usize,
 }
 
 impl Default for ClientLimits {
@@ -35,6 +37,7 @@ impl Default for ClientLimits {
             max_shm_bytes: 256 * 1024 * 1024, // 256 MiB
             max_layer_surfaces: 8,
             max_activation_tokens: 16,
+            max_idle_inhibitors: 8,
         }
     }
 }
@@ -50,6 +53,8 @@ pub struct ClientState {
     pub layer_surface_count: AtomicUsize,
     /// Number of active activation tokens created by this client.
     pub activation_token_count: AtomicUsize,
+    /// Number of active idle inhibitors owned by this client.
+    pub idle_inhibitor_count: AtomicUsize,
     /// Configured resource limits for this client.
     pub limits: ClientLimits,
     /// Process ID from socket peer credentials (-1 if unset/unavailable).
@@ -68,6 +73,8 @@ pub struct ClientState {
     pub is_session_lock_allowed: AtomicBool,
     /// Cached authorization decision for `ext_foreign_toplevel_list_v1`.
     pub is_foreign_toplevel_allowed: AtomicBool,
+    /// Cached authorization decision for `ext_idle_notifier_v1`.
+    pub is_idle_notify_allowed: AtomicBool,
 }
 
 impl Default for ClientState {
@@ -77,6 +84,7 @@ impl Default for ClientState {
             surface_count: AtomicUsize::new(0),
             layer_surface_count: AtomicUsize::new(0),
             activation_token_count: AtomicUsize::new(0),
+            idle_inhibitor_count: AtomicUsize::new(0),
             limits: ClientLimits::default(),
             pid: AtomicI32::new(-1),
             uid: AtomicU32::new(u32::MAX),
@@ -86,6 +94,7 @@ impl Default for ClientState {
             is_input_method_allowed: AtomicBool::new(false),
             is_session_lock_allowed: AtomicBool::new(false),
             is_foreign_toplevel_allowed: AtomicBool::new(false),
+            is_idle_notify_allowed: AtomicBool::new(false),
         }
     }
 }
@@ -142,6 +151,23 @@ impl ClientState {
         decrement_atomic_counter(&self.activation_token_count);
     }
 
+    /// Checks if a new idle inhibitor can be created without exceeding resource limits.
+    #[must_use]
+    pub fn try_increment_idle_inhibitor(&self) -> bool {
+        let current = self.idle_inhibitor_count.load(Ordering::Relaxed);
+        if current >= self.limits.max_idle_inhibitors {
+            false
+        } else {
+            self.idle_inhibitor_count.fetch_add(1, Ordering::Relaxed);
+            true
+        }
+    }
+
+    /// Decrements the active idle inhibitor count when an inhibitor is destroyed.
+    pub fn decrement_idle_inhibitor(&self) {
+        decrement_atomic_counter(&self.idle_inhibitor_count);
+    }
+
     /// Returns `true` if this client is authorized to bind `zwlr_layer_shell_v1`.
     #[must_use]
     pub fn is_layer_shell_allowed(&self) -> bool {
@@ -184,22 +210,50 @@ impl ClientState {
             .store(allowed, Ordering::Release);
     }
 
-    /// Inspects peer socket credentials and caches the authorization decision.
-    pub fn inspect_and_cache_privilege(&self, creds: &Credentials, allow_list: &[String]) {
+    /// Returns `true` if this client is authorized to bind `ext_idle_notifier_v1`.
+    #[must_use]
+    pub fn is_idle_notify_allowed(&self) -> bool {
+        self.is_idle_notify_allowed.load(Ordering::Acquire)
+    }
+
+    /// Sets authorization for `ext_idle_notifier_v1`.
+    pub fn set_idle_notify_allowed(&self, allowed: bool) {
+        self.is_idle_notify_allowed
+            .store(allowed, Ordering::Release);
+    }
+
+    /// Inspects peer socket credentials and caches the authorization decisions independently.
+    pub fn inspect_and_cache_privilege(
+        &self,
+        creds: &Credentials,
+        config: &kx_config::PrivilegeConfig,
+    ) {
         let compositor_uid = smithay::reexports::rustix::process::getuid().as_raw();
-        let (is_allowed, resolved_exe) = evaluate_privilege(creds, allow_list, compositor_uid);
+        let (decisions, resolved_exe) = evaluate_all_privileges(creds, config, compositor_uid);
 
         self.pid.store(creds.pid, Ordering::Release);
         self.uid.store(creds.uid, Ordering::Release);
         self.gid.store(creds.gid, Ordering::Release);
-        self.is_layer_shell_allowed
-            .store(is_allowed, Ordering::Release);
-        self.is_input_method_allowed
-            .store(is_allowed, Ordering::Release);
-        self.is_session_lock_allowed
-            .store(is_allowed, Ordering::Release);
-        self.is_foreign_toplevel_allowed
-            .store(is_allowed, Ordering::Release);
+        self.is_layer_shell_allowed.store(
+            decisions.contains(ClientPrivileges::LAYER_SHELL),
+            Ordering::Release,
+        );
+        self.is_foreign_toplevel_allowed.store(
+            decisions.contains(ClientPrivileges::FOREIGN_TOPLEVEL),
+            Ordering::Release,
+        );
+        self.is_idle_notify_allowed.store(
+            decisions.contains(ClientPrivileges::IDLE_NOTIFY),
+            Ordering::Release,
+        );
+        self.is_session_lock_allowed.store(
+            decisions.contains(ClientPrivileges::SESSION_LOCK),
+            Ordering::Release,
+        );
+        self.is_input_method_allowed.store(
+            decisions.contains(ClientPrivileges::INPUT_METHOD),
+            Ordering::Release,
+        );
 
         if let Ok(mut exe_lock) = self.executable_path.lock() {
             *exe_lock = resolved_exe;
@@ -222,19 +276,41 @@ fn decrement_atomic_counter(counter: &AtomicUsize) {
     }
 }
 
-fn evaluate_privilege(
+bitflags::bitflags! {
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    struct ClientPrivileges: u8 {
+        const LAYER_SHELL = 1 << 0;
+        const FOREIGN_TOPLEVEL = 1 << 1;
+        const IDLE_NOTIFY = 1 << 2;
+        const SESSION_LOCK = 1 << 3;
+        const INPUT_METHOD = 1 << 4;
+    }
+}
+
+fn is_secure_privileged_binary(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match std::fs::metadata(path) {
+        Ok(meta) => meta.uid() == 0 && (meta.mode() & 0o022) == 0,
+        Err(err) => {
+            tracing::warn!(path = %path.display(), %err, "Failed to inspect metadata of privileged binary");
+            false
+        }
+    }
+}
+
+fn evaluate_all_privileges(
     creds: &Credentials,
-    allow_list: &[String],
+    config: &kx_config::PrivilegeConfig,
     compositor_uid: u32,
-) -> (bool, Option<PathBuf>) {
+) -> (ClientPrivileges, Option<PathBuf>) {
     if creds.uid != compositor_uid {
         tracing::info!(
             client_pid = creds.pid,
             client_uid = creds.uid,
             compositor_uid,
-            "Layer-shell access denied: client UID mismatch"
+            "Access denied: client UID mismatch"
         );
-        return (false, None);
+        return (ClientPrivileges::empty(), None);
     }
 
     if creds.pid <= 0 {
@@ -242,7 +318,7 @@ fn evaluate_privilege(
             client_pid = creds.pid,
             "Invalid client PID for privilege check"
         );
-        return (false, None);
+        return (ClientPrivileges::empty(), None);
     }
 
     let proc_exe_path = format!("/proc/{}/exe", creds.pid);
@@ -250,32 +326,60 @@ fn evaluate_privilege(
         Ok(path) => path,
         Err(err) => {
             tracing::warn!(client_pid = creds.pid, %err, "Failed to resolve client /proc/<pid>/exe");
-            return (false, None);
+            return (ClientPrivileges::empty(), None);
         }
     };
 
     let resolved_str = resolved.to_string_lossy();
-    let is_allowed = allow_list
-        .iter()
-        .any(|allowed| allowed == resolved_str.as_ref());
+    let is_in_list =
+        |list: &[String]| -> bool { list.iter().any(|allowed| allowed == resolved_str.as_ref()) };
 
-    if is_allowed {
-        tracing::info!(
+    let is_secure_binary = is_secure_privileged_binary(&resolved);
+    let session_lock_in_list = is_in_list(&config.session_lock_allow);
+    let session_lock = session_lock_in_list && is_secure_binary;
+    if session_lock_in_list && !session_lock {
+        tracing::warn!(
             client_pid = creds.pid,
-            client_uid = creds.uid,
             exe = %resolved_str,
-            "Layer-shell privilege granted to allow-listed client"
-        );
-    } else {
-        tracing::info!(
-            client_pid = creds.pid,
-            client_uid = creds.uid,
-            exe = %resolved_str,
-            "Layer-shell privilege denied (not in allow-list)"
+            "Session-lock access denied: binary not root-owned or group/world writable"
         );
     }
 
-    (is_allowed, Some(resolved))
+    let input_method_in_list = is_in_list(&config.input_method_allow);
+    let input_method = input_method_in_list && is_secure_binary;
+    if input_method_in_list && !input_method {
+        tracing::warn!(
+            client_pid = creds.pid,
+            exe = %resolved_str,
+            "Input-method access denied: binary not root-owned or group/world writable"
+        );
+    }
+
+    let mut privileges = ClientPrivileges::empty();
+    if is_in_list(&config.layer_shell_allow) {
+        privileges |= ClientPrivileges::LAYER_SHELL;
+    }
+    if is_in_list(&config.foreign_toplevel_allow) {
+        privileges |= ClientPrivileges::FOREIGN_TOPLEVEL;
+    }
+    if is_in_list(&config.idle_notify_allow) {
+        privileges |= ClientPrivileges::IDLE_NOTIFY;
+    }
+    if session_lock {
+        privileges |= ClientPrivileges::SESSION_LOCK;
+    }
+    if input_method {
+        privileges |= ClientPrivileges::INPUT_METHOD;
+    }
+
+    tracing::info!(
+        client_pid = creds.pid,
+        exe = %resolved_str,
+        ?privileges,
+        "Evaluated client privileges"
+    );
+
+    (privileges, Some(resolved))
 }
 
 impl ClientData for ClientState {
@@ -301,6 +405,7 @@ mod tests {
                 max_shm_bytes: 1024,
                 max_layer_surfaces: 2,
                 max_activation_tokens: 2,
+                max_idle_inhibitors: 2,
             },
             ..Default::default()
         };
@@ -358,8 +463,9 @@ mod tests {
             uid: 1001,
             gid: 1001,
         };
-        let (allowed, exe) = evaluate_privilege(&creds_mismatch, &[], 1000);
-        assert!(!allowed);
+        let priv_empty = kx_config::PrivilegeConfig::default();
+        let (decisions, exe) = evaluate_all_privileges(&creds_mismatch, &priv_empty, 1000);
+        assert!(!decisions.contains(ClientPrivileges::LAYER_SHELL));
         assert!(exe.is_none());
 
         let creds_invalid_pid = Credentials {
@@ -367,8 +473,8 @@ mod tests {
             uid: 1000,
             gid: 1000,
         };
-        let (allowed, exe) = evaluate_privilege(&creds_invalid_pid, &[], 1000);
-        assert!(!allowed);
+        let (decisions, exe) = evaluate_all_privileges(&creds_invalid_pid, &priv_empty, 1000);
+        assert!(!decisions.contains(ClientPrivileges::LAYER_SHELL));
         assert!(exe.is_none());
 
         // Test with current process
@@ -381,27 +487,83 @@ mod tests {
         };
 
         // When allow-list is empty, must be denied
-        let (allowed, exe) = evaluate_privilege(&creds_current, &[], self_uid);
-        assert!(!allowed);
+        let (decisions, exe) = evaluate_all_privileges(&creds_current, &priv_empty, self_uid);
+        assert!(!decisions.contains(ClientPrivileges::LAYER_SHELL));
         assert!(exe.is_some());
 
         // When current exe is in allow-list, must be allowed
         let current_exe = std::fs::read_link(format!("/proc/{proc_pid}/exe")).unwrap();
         let current_exe_str = current_exe.to_string_lossy().to_string();
-        let (allowed, exe) = evaluate_privilege(
-            &creds_current,
-            std::slice::from_ref(&current_exe_str),
-            self_uid,
-        );
-        assert!(allowed);
-        assert_eq!(exe, Some(current_exe));
+        let priv_layer_shell = kx_config::PrivilegeConfig {
+            layer_shell_allow: vec![current_exe_str.clone()],
+            ..Default::default()
+        };
+        let (decisions, exe) = evaluate_all_privileges(&creds_current, &priv_layer_shell, self_uid);
+        assert!(decisions.contains(ClientPrivileges::LAYER_SHELL));
+        assert!(!decisions.contains(ClientPrivileges::FOREIGN_TOPLEVEL));
+        assert_eq!(exe, Some(current_exe.clone()));
 
         // Test inspect_and_cache_privilege updates foreign toplevel allowed
         let state = ClientState::default();
         assert!(!state.is_foreign_toplevel_allowed());
-        state.inspect_and_cache_privilege(&creds_current, &[current_exe_str]);
+        let priv_config = kx_config::PrivilegeConfig {
+            foreign_toplevel_allow: vec![current_exe_str.clone()],
+            ..Default::default()
+        };
+        state.inspect_and_cache_privilege(&creds_current, &priv_config);
         assert!(state.is_foreign_toplevel_allowed());
+        assert!(!state.is_layer_shell_allowed());
+        assert!(!state.is_idle_notify_allowed());
+        assert!(!state.is_session_lock_allowed());
+        assert!(!state.is_input_method_allowed());
         state.set_foreign_toplevel_allowed(false);
         assert!(!state.is_foreign_toplevel_allowed());
+    }
+
+    #[test]
+    fn test_idle_inhibitor_limits() {
+        let state = ClientState {
+            limits: ClientLimits {
+                max_idle_inhibitors: 2,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(state.try_increment_idle_inhibitor());
+        assert!(state.try_increment_idle_inhibitor());
+        assert!(!state.try_increment_idle_inhibitor());
+        state.decrement_idle_inhibitor();
+        assert!(state.try_increment_idle_inhibitor());
+    }
+
+    #[test]
+    fn test_privileged_executable_rejects_non_root() {
+        let proc_pid = i32::try_from(std::process::id()).unwrap_or(1);
+        let self_uid = smithay::reexports::rustix::process::getuid().as_raw();
+        let creds_current = Credentials {
+            pid: proc_pid,
+            uid: self_uid,
+            gid: 0,
+        };
+        let current_exe = std::fs::read_link(format!("/proc/{proc_pid}/exe")).unwrap();
+        let current_exe_str = current_exe.to_string_lossy().to_string();
+
+        let state = ClientState::default();
+        let priv_config = kx_config::PrivilegeConfig {
+            session_lock_allow: vec![current_exe_str.clone()],
+            input_method_allow: vec![current_exe_str],
+            ..Default::default()
+        };
+        state.inspect_and_cache_privilege(&creds_current, &priv_config);
+
+        let is_root = std::fs::metadata(&current_exe).is_ok_and(|m| {
+            use std::os::unix::fs::MetadataExt;
+            m.uid() == 0
+        });
+
+        if !is_root {
+            assert!(!state.is_session_lock_allowed());
+            assert!(!state.is_input_method_allowed());
+        }
     }
 }
