@@ -4,6 +4,7 @@
 //! Nested compositor runner using the Smithay winit backend and Calloop event loop.
 
 mod event;
+pub mod render;
 
 use std::os::fd::OwnedFd;
 use std::time::{Duration, Instant};
