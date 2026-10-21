@@ -436,6 +436,9 @@ pub(crate) fn register_event_sources(
                 if let Err(err) = loop_state.display.dispatch_clients(&mut loop_state.state) {
                     tracing::error!(%err, "Error dispatching Wayland clients on poll event");
                 }
+                if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                    tracing::error!(%err, "Error dispatching idle timers on poll event");
+                }
                 loop_state.backend.window().request_redraw();
                 Ok(PostAction::Continue)
             },
@@ -472,18 +475,17 @@ fn handle_winit_event(event: &WinitEvent, loop_state: &mut NestedLoopState) {
         WinitEvent::Focus(focused) => {
             tracing::debug!(focused, "Nested window focus changed");
         }
-        WinitEvent::Input(InputEvent::Keyboard { event }) => {
-            loop_state.handle_keyboard_event(event);
+        WinitEvent::Input(input_event) => {
+            loop_state.state.process_input_activity();
+            match input_event {
+                InputEvent::Keyboard { event } => loop_state.handle_keyboard_event(event),
+                InputEvent::PointerMotionAbsolute { event } => {
+                    loop_state.handle_pointer_motion_absolute(event);
+                }
+                InputEvent::PointerButton { event } => loop_state.handle_pointer_button(event),
+                InputEvent::PointerAxis { event } => loop_state.handle_pointer_axis(event),
+                _ => {}
+            }
         }
-        WinitEvent::Input(InputEvent::PointerMotionAbsolute { event }) => {
-            loop_state.handle_pointer_motion_absolute(event);
-        }
-        WinitEvent::Input(InputEvent::PointerButton { event }) => {
-            loop_state.handle_pointer_button(event);
-        }
-        WinitEvent::Input(InputEvent::PointerAxis { event }) => {
-            loop_state.handle_pointer_axis(event);
-        }
-        WinitEvent::Input(_) => {}
     }
 }

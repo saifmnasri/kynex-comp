@@ -103,6 +103,21 @@ fn register_exit_timer(
     Ok(())
 }
 
+fn register_idle_timer(handle: &LoopHandle<'_, NestedLoopState>) -> Result<(), ShellError> {
+    let timer = Timer::from_duration(Duration::from_millis(100));
+    handle
+        .insert_source(timer, |_deadline, (), loop_state| {
+            if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                tracing::error!(%err, "Error dispatching periodic idle timers");
+            }
+            TimeoutAction::ToDuration(Duration::from_millis(100))
+        })
+        .map_err(|e| {
+            ShellError::SourceInsertion(format!("Failed to insert idle notifier timer: {e}"))
+        })?;
+    Ok(())
+}
+
 fn run_event_loop(
     event_loop: &mut EventLoop<'_, NestedLoopState>,
     loop_state: &mut NestedLoopState,
@@ -154,6 +169,7 @@ fn setup_nested_environment(
     if let Some(duration) = options.exit_after {
         register_exit_timer(&event_loop.handle(), duration)?;
     }
+    register_idle_timer(&event_loop.handle())?;
 
     let loop_state = NestedLoopState::new(
         backend,

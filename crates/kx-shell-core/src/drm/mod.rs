@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 
 use calloop::generic::Generic;
 use calloop::signals::{Signal, Signals};
+use calloop::timer::{TimeoutAction, Timer};
 use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::backend::drm::{DrmDeviceNotifier, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
@@ -159,6 +160,7 @@ fn register_event_sources(
         .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
 
     register_wayland_sources(loop_handle, sources.listening_socket, sources.poll_fd)?;
+    register_idle_timer(loop_handle)?;
 
     Ok(())
 }
@@ -273,11 +275,29 @@ fn register_wayland_sources(
                 if let Err(err) = loop_state.display.dispatch_clients(&mut loop_state.state) {
                     tracing::error!(%err, "Error dispatching Wayland clients on poll event");
                 }
+                if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                    tracing::error!(%err, "Error dispatching idle timers on poll event");
+                }
                 Ok(PostAction::Continue)
             },
         )
         .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
 
+    Ok(())
+}
+
+fn register_idle_timer(handle: &LoopHandle<'_, DrmLoopState>) -> Result<(), ShellError> {
+    let timer = Timer::from_duration(Duration::from_millis(100));
+    handle
+        .insert_source(timer, |_deadline, (), loop_state| {
+            if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                tracing::error!(%err, "Error dispatching periodic idle timers");
+            }
+            TimeoutAction::ToDuration(Duration::from_millis(100))
+        })
+        .map_err(|e| {
+            ShellError::SourceInsertion(format!("Failed to insert idle notifier timer: {e}"))
+        })?;
     Ok(())
 }
 
