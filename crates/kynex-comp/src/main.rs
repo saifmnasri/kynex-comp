@@ -185,10 +185,35 @@ fn resolve_crash_dir() -> PathBuf {
     }
 }
 
+/// Loads and validates a configuration file from disk if specified.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read from disk or if configuration parsing fails.
+pub fn load_config_file(
+    path: Option<&std::path::Path>,
+) -> anyhow::Result<Option<kx_config::Config>> {
+    match path {
+        Some(p) => {
+            let content = std::fs::read_to_string(p).map_err(|e| {
+                anyhow::anyhow!("failed to read config file '{}': {e}", p.display())
+            })?;
+            let cfg = kx_config::load_from_str(&content).map_err(|e| {
+                anyhow::anyhow!("failed to parse config file '{}': {e}", p.display())
+            })?;
+            Ok(Some(cfg))
+        }
+        None => Ok(None),
+    }
+}
+
 fn dispatch_backend(parsed: &CliArgs) -> anyhow::Result<()> {
+    let app_config = load_config_file(parsed.config_path.as_deref())?;
+
     if parsed.backend == "winit" || parsed.backend == "nested" {
         let options = kx_shell_core::NestedOptions {
             config: kx_shell_core::NestedConfig::default(),
+            app_config,
             max_frames: parsed.max_frames,
             exit_after: parsed.exit_after,
         };
@@ -396,5 +421,11 @@ mod tests {
         let parsed = parse_args(&args).unwrap().unwrap();
         assert_eq!(parsed.backend, "drm");
         assert!(!parsed.diagnostic);
+    }
+
+    #[test]
+    fn test_load_config_file() {
+        assert!(load_config_file(None).unwrap().is_none());
+        assert!(load_config_file(Some(std::path::Path::new("/nonexistent/kynex.toml"))).is_err());
     }
 }

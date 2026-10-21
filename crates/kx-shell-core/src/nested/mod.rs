@@ -52,6 +52,8 @@ impl Default for NestedConfig {
 pub struct NestedOptions {
     /// Nested window configuration.
     pub config: NestedConfig,
+    /// Optional custom compositor configuration.
+    pub app_config: Option<kx_config::Config>,
     /// Optional limit on the number of rendered frames before exiting (useful for testing).
     pub max_frames: Option<u64>,
     /// Optional time limit before the compositor cleanly terminates.
@@ -129,7 +131,10 @@ fn setup_nested_environment(
     let [r, g, b, a] = options.config.background_color;
     let bg_color = Color32F::new(r, g, b, a);
 
-    let (display, listening_socket, state, poll_fd) = create_display_and_state(&backend)?;
+    let (display, listening_socket, mut state, poll_fd) = create_display_and_state(&backend)?;
+    if let Some(cfg) = &options.app_config {
+        state.config = cfg.clone();
+    }
     let damage_tracker = OutputDamageTracker::from_output(&state.output);
     let start_time = Instant::now();
 
