@@ -152,56 +152,16 @@ impl KynexState {
         let mut space = Space::default();
         space.map_output(&output, (0, 0));
         let proto = init_protocol_globals(dh)?;
-
-        Ok(Self {
-            compositor_state: CompositorState::new::<Self>(dh),
-            shm_state: ShmState::new::<Self>(dh, vec![]),
+        let core = CoreState {
+            dh: dh.clone(),
+            socket_name,
+            output,
             seat_state,
             seat,
-            output,
-            socket_name,
-            xdg_shell_state: XdgShellState::new::<Self>(dh),
             space,
-            popups: PopupManager::default(),
-            binding_matcher: kx_input::BindingMatcher::with_defaults(),
-            window_manager: WindowManager::new(DEFAULT_WORKSPACE_COUNT),
-            window_map: HashMap::new(),
-            surface_to_window_id: HashMap::new(),
-            data_device_state: smithay::wayland::selection::data_device::DataDeviceState::new::<Self>(
-                dh,
-            ),
-            xdg_decoration_state: XdgDecorationState::new::<Self>(dh),
-            cursor_status: CursorImageStatus::default_named(),
-            layer_shell_state: create_layer_shell_state(dh),
-            display_handle: dh.clone(),
-            xdg_activation_state: XdgActivationState::new::<Self>(dh),
-            dmabuf_state: proto.dmabuf_state,
-            dmabuf_global: proto.dmabuf_global,
-            drm_syncobj_state: proto.drm_syncobj_state,
-            viewporter_state: proto.viewporter_state,
-            fractional_scale_manager_state: proto.fractional_scale_manager_state,
-            cursor_shape_manager_state: proto.cursor_shape_manager_state,
-            pointer_constraints_state: proto.pointer_constraints_state,
-            relative_pointer_state: proto.relative_pointer_state,
-            text_input_state: proto.text_input_state,
-            input_method_state: proto.input_method_state,
-            session_lock_state: proto.session_lock_state,
-            is_session_locked: false,
-            lock_surfaces: Vec::new(),
-            foreign_toplevel_list_state: proto.foreign_toplevel_list_state,
-            foreign_toplevel_handles: HashMap::new(),
-            presentation_state: proto.presentation_state,
-            idle_inhibit_state: proto.idle_inhibit_state,
-            idle_inhibitors: Vec::new(),
-            primary_selection_state: proto.primary_selection_state,
-            single_pixel_buffer_state: proto.single_pixel_buffer_state,
-            content_type_state: proto.content_type_state,
-            tearing_control_state: proto.tearing_control_state,
-            idle_notifier_state: proto.idle_notifier_state,
-            idle_loop: Some(proto.idle_loop),
-            alpha_modifier_state: proto.alpha_modifier_state,
-            config: kx_config::Config::default(),
-        })
+        };
+
+        Ok(build_state(core, proto))
     }
 
     /// Creates a new compositor state with core protocol globals and a default nested output.
@@ -359,6 +319,10 @@ impl SeatHandler for KynexState {
             seat,
             client,
         );
+
+        if let (Some(surface), Some(pointer)) = (focused, seat.get_pointer()) {
+            crate::pointer_constraints::maybe_activate_pointer_constraint(surface, &pointer);
+        }
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
@@ -406,6 +370,67 @@ struct ProtocolGlobals {
     idle_notifier_state: smithay::wayland::idle_notify::IdleNotifierState<KynexState>,
     idle_loop: smithay::reexports::calloop::EventLoop<'static, KynexState>,
     alpha_modifier_state: smithay::wayland::alpha_modifier::AlphaModifierState,
+}
+
+struct CoreState {
+    dh: DisplayHandle,
+    socket_name: String,
+    output: Output,
+    seat_state: SeatState<KynexState>,
+    seat: Seat<KynexState>,
+    space: Space<Window>,
+}
+
+fn build_state(core: CoreState, proto: ProtocolGlobals) -> KynexState {
+    KynexState {
+        compositor_state: CompositorState::new::<KynexState>(&core.dh),
+        shm_state: ShmState::new::<KynexState>(&core.dh, vec![]),
+        seat_state: core.seat_state,
+        seat: core.seat,
+        output: core.output,
+        socket_name: core.socket_name,
+        xdg_shell_state: XdgShellState::new::<KynexState>(&core.dh),
+        space: core.space,
+        popups: PopupManager::default(),
+        binding_matcher: kx_input::BindingMatcher::with_defaults(),
+        window_manager: WindowManager::new(DEFAULT_WORKSPACE_COUNT),
+        window_map: HashMap::new(),
+        surface_to_window_id: HashMap::new(),
+        data_device_state: smithay::wayland::selection::data_device::DataDeviceState::new::<
+            KynexState,
+        >(&core.dh),
+        xdg_decoration_state: XdgDecorationState::new::<KynexState>(&core.dh),
+        cursor_status: CursorImageStatus::default_named(),
+        layer_shell_state: create_layer_shell_state(&core.dh),
+        xdg_activation_state: XdgActivationState::new::<KynexState>(&core.dh),
+        display_handle: core.dh,
+        dmabuf_state: proto.dmabuf_state,
+        dmabuf_global: proto.dmabuf_global,
+        drm_syncobj_state: proto.drm_syncobj_state,
+        viewporter_state: proto.viewporter_state,
+        fractional_scale_manager_state: proto.fractional_scale_manager_state,
+        cursor_shape_manager_state: proto.cursor_shape_manager_state,
+        pointer_constraints_state: proto.pointer_constraints_state,
+        relative_pointer_state: proto.relative_pointer_state,
+        text_input_state: proto.text_input_state,
+        input_method_state: proto.input_method_state,
+        session_lock_state: proto.session_lock_state,
+        is_session_locked: false,
+        lock_surfaces: Vec::new(),
+        foreign_toplevel_list_state: proto.foreign_toplevel_list_state,
+        foreign_toplevel_handles: HashMap::new(),
+        presentation_state: proto.presentation_state,
+        idle_inhibit_state: proto.idle_inhibit_state,
+        idle_inhibitors: Vec::new(),
+        primary_selection_state: proto.primary_selection_state,
+        single_pixel_buffer_state: proto.single_pixel_buffer_state,
+        content_type_state: proto.content_type_state,
+        tearing_control_state: proto.tearing_control_state,
+        idle_notifier_state: proto.idle_notifier_state,
+        idle_loop: Some(proto.idle_loop),
+        alpha_modifier_state: proto.alpha_modifier_state,
+        config: kx_config::Config::default(),
+    }
 }
 
 fn init_protocol_globals(dh: &DisplayHandle) -> Result<ProtocolGlobals, ShellError> {

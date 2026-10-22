@@ -41,6 +41,9 @@ pub fn init_pointer_constraints_global(dh: &DisplayHandle) -> PointerConstraints
 
 /// Helper to activate any pending pointer constraint on `surface` if the pointer is focused on it.
 pub fn maybe_activate_pointer_constraint(surface: &WlSurface, pointer: &PointerHandle<KynexState>) {
+    if pointer.current_focus().as_ref() != Some(surface) {
+        return;
+    }
     with_pointer_constraint(surface, pointer, |constraint| {
         if let Some(constraint) = constraint {
             if !constraint.is_active() {
@@ -57,24 +60,7 @@ impl PointerConstraintsHandler for KynexState {
             "New pointer constraint request received"
         );
 
-        // Security check per Rule 05: Only activate if the target surface currently holds pointer focus.
-        let has_focus = pointer.current_focus().as_ref() == Some(surface);
-        if has_focus {
-            with_pointer_constraint(surface, pointer, |constraint| {
-                if let Some(constraint) = constraint {
-                    tracing::debug!(
-                        surface = ?surface.id(),
-                        "Surface holds pointer focus; activating pointer constraint"
-                    );
-                    constraint.activate();
-                }
-            });
-        } else {
-            tracing::debug!(
-                surface = ?surface.id(),
-                "Surface does not have pointer focus; constraint left inactive until focused"
-            );
-        }
+        maybe_activate_pointer_constraint(surface, pointer);
     }
 
     fn cursor_position_hint(

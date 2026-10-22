@@ -68,4 +68,10 @@ impl KynexState {
     pub fn notify_idle_activity(&mut self, seat: &smithay::input::Seat<Self>) {
         self.idle_notifier_state.notify_activity(seat);
     }
+
+    /// Notifies the idle notifier of user activity on the primary compositor seat.
+    pub fn process_input_activity(&mut self) {
+        let seat = self.seat.clone();
+        self.notify_idle_activity(&seat);
+    }
 }

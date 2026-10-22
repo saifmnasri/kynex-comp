@@ -270,3 +270,58 @@ fn test_ext_idle_notification_idled_and_resumed() -> Result<(), Box<dyn std::err
 
     Ok(())
 }
+
+#[test]
+fn test_idle_notify_production_loop_and_input() -> Result<(), Box<dyn std::error::Error>> {
+    let mut harness = TestHarness::new()?;
+
+    let (mgr_name, _) = harness
+        .client_state
+        .notifier_global
+        .ok_or("ext_idle_notifier_v1 global not advertised")?;
+    let (seat_name, _) = harness
+        .client_state
+        .seat_global
+        .ok_or("wl_seat global not advertised")?;
+
+    let qh = harness.event_queue.handle();
+    let display_proxy = harness.conn.display();
+    let registry = display_proxy.get_registry(&qh, ());
+
+    let notifier: ExtIdleNotifierV1 = registry.bind(mgr_name, 1, &qh, ());
+    let seat: wl_seat::WlSeat = registry.bind(seat_name, 1, &qh, ());
+
+    let notification: ExtIdleNotificationV1 = notifier.get_idle_notification(50, &seat, &qh, ());
+
+    harness.sync_roundtrip()?;
+    assert_eq!(harness.client_state.idled_count, 0);
+
+    // Call production process_input_activity which resets the idle timer
+    harness.state.process_input_activity();
+
+    // Now dispatch idle timers through compositor event loop dispatch with 70ms timeout
+    harness
+        .state
+        .dispatch_idle_timers(Some(Duration::from_millis(70)))?;
+    harness.sync_roundtrip()?;
+
+    assert_eq!(
+        harness.client_state.idled_count, 1,
+        "client should receive idled event when timer expires"
+    );
+
+    // Now test that production process_input_activity wakes the idle notifier without calling notify_idle_activity directly
+    harness.state.process_input_activity();
+    harness.sync_roundtrip()?;
+
+    assert_eq!(
+        harness.client_state.resumed_count, 1,
+        "client should receive resumed event after process_input_activity"
+    );
+
+    notification.destroy();
+    notifier.destroy();
+    harness.sync_roundtrip()?;
+
+    Ok(())
+}
