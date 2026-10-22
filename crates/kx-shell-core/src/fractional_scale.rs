@@ -40,9 +40,37 @@ pub fn update_surface_fractional_scale(surface: &WlSurface, scale: f64) {
     });
 }
 
+impl KynexState {
+    /// Determines the preferred fractional scale factor for a given surface.
+    ///
+    /// Resolves the output that the surface belongs to (either via window space mapping
+    /// or layer surface mapping) and returns its current scale. If unmapped, falls back
+    /// to the primary output's scale.
+    #[must_use]
+    pub fn surface_scale(&self, surface: &WlSurface) -> f64 {
+        if let Some(&wid) = self.surface_to_window_id.get(surface) {
+            if let Some(output) = crate::window::primary_output_for_window(self, wid) {
+                return output.current_scale().fractional_scale();
+            }
+        }
+
+        for output in self.space.outputs() {
+            let layer_map = smithay::desktop::layer_map_for_output(output);
+            if layer_map
+                .layer_for_surface(surface, smithay::desktop::WindowSurfaceType::all())
+                .is_some()
+            {
+                return output.current_scale().fractional_scale();
+            }
+        }
+
+        self.output.current_scale().fractional_scale()
+    }
+}
+
 impl FractionalScaleHandler for KynexState {
     fn new_fractional_scale(&mut self, surface: WlSurface) {
-        let scale = self.output.current_scale().fractional_scale();
+        let scale = self.surface_scale(&surface);
         update_surface_fractional_scale(&surface, scale);
     }
 }
