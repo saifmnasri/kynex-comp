@@ -334,6 +334,22 @@ fn create_drm_output_manager(
     ))
 }
 
+fn create_render_elements(
+    crtc: crtc::Handle,
+    bg_color: Color32F,
+) -> DrmOutputRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>> {
+    let mut render_elements = DrmOutputRenderElements::<
+        GlesRenderer,
+        WaylandSurfaceRenderElement<GlesRenderer>,
+    >::default();
+    render_elements.add_output(
+        &crtc,
+        bg_color,
+        std::iter::empty::<WaylandSurfaceRenderElement<GlesRenderer>>(),
+    );
+    render_elements
+}
+
 pub(crate) fn initialize_output_entry(
     manager: &mut PipelineDrmOutputManager,
     renderer: &mut GlesRenderer,
@@ -348,15 +364,7 @@ pub(crate) fn initialize_output_entry(
         assignment.position,
     );
 
-    let mut render_elements = DrmOutputRenderElements::<
-        GlesRenderer,
-        WaylandSurfaceRenderElement<GlesRenderer>,
-    >::default();
-    render_elements.add_output(
-        &assignment.crtc,
-        bg_color,
-        std::iter::empty::<WaylandSurfaceRenderElement<GlesRenderer>>(),
-    );
+    let render_elements = create_render_elements(assignment.crtc, bg_color);
 
     let output = manager
         .initialize_output(

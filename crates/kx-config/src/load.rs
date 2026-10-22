@@ -250,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_validation() {
+    fn semantic_validation_general_and_input() {
         let invalid_log = "config_version = 1\n[general]\nlog_level = \"verbose\"\n";
         assert!(matches!(
             load_from_str(invalid_log),
@@ -280,7 +280,10 @@ mod tests {
             load_from_str(rate_too_high),
             Err(ConfigError::Validation(_))
         ));
+    }
 
+    #[test]
+    fn semantic_validation_keybindings() {
         let valid_super = "config_version = 1\n[keybindings]\nprimary_mod = \"Super\"\n";
         let cfg = load_from_str(valid_super).unwrap();
         assert_eq!(cfg.keybindings.primary_mod, "Super");
@@ -294,7 +297,10 @@ mod tests {
             load_from_str(invalid_mod),
             Err(ConfigError::Validation(_))
         ));
+    }
 
+    #[test]
+    fn semantic_validation_privilege() {
         let valid_privilege = r#"
             config_version = 1
             [privilege]
