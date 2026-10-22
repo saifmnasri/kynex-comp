@@ -174,6 +174,9 @@ impl NestedLoopState {
             );
             pointer.frame(&mut self.state);
             grabbed = grabbed || pointer.is_grabbed();
+            if let Some(surface) = pointer.current_focus() {
+                crate::pointer_constraints::maybe_activate_pointer_constraint(&surface, &pointer);
+            }
         }
 
         if grabbed {

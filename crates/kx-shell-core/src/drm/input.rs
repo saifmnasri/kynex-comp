@@ -149,6 +149,9 @@ fn dispatch_pointer_motion(
             },
         );
         pointer.frame(state);
+        if let Some(surface) = pointer.current_focus() {
+            crate::pointer_constraints::maybe_activate_pointer_constraint(&surface, &pointer);
+        }
     }
 }
 

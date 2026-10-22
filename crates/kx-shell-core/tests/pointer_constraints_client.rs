@@ -173,6 +173,7 @@ impl Dispatch<wl_pointer::WlPointer, ()> for PointerConstraintsTestClientState {
 struct PointerConstraintsTestHarness {
     display: Display<KynexState>,
     state: KynexState,
+    client: smithay::reexports::wayland_server::Client,
     conn: Connection,
     event_queue: EventQueue<PointerConstraintsTestClientState>,
     client_state: PointerConstraintsTestClientState,
@@ -190,7 +191,7 @@ impl PointerConstraintsTestHarness {
 
         let (server_stream, client_stream) = UnixStream::pair()?;
         let client_data = Arc::new(ClientState::default());
-        display.handle().insert_client(server_stream, client_data)?;
+        let client = display.handle().insert_client(server_stream, client_data)?;
 
         let conn = Connection::from_socket(client_stream)?;
         let mut event_queue = conn.new_event_queue();
@@ -212,6 +213,7 @@ impl PointerConstraintsTestHarness {
         Ok(Self {
             display,
             state,
+            client,
             conn,
             event_queue,
             client_state,
@@ -354,6 +356,105 @@ fn test_pointer_constraints_confined_pointer_lifecycle() -> Result<(), Box<dyn s
     confined_pointer.destroy();
     surface.destroy();
 
+    harness.roundtrip()?;
+    Ok(())
+}
+
+#[test]
+fn test_pointer_constraints_activate_on_focus_acquisition() -> Result<(), Box<dyn std::error::Error>>
+{
+    use smithay::input::pointer::MotionEvent;
+    use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface as ServerWlSurface;
+    use smithay::utils::Point;
+    use wayland_client::Proxy;
+
+    let mut harness = PointerConstraintsTestHarness::new()?;
+
+    let (mgr_name, mgr_ver) = harness
+        .client_state
+        .constraints_global
+        .expect("zwp_pointer_constraints_v1 global advertised");
+    let (comp_name, comp_ver) = harness
+        .client_state
+        .compositor_global
+        .expect("wl_compositor global advertised");
+    let (seat_name, seat_ver) = harness
+        .client_state
+        .seat_global
+        .expect("wl_seat global advertised");
+
+    let qhandle = harness.event_queue.handle();
+    let registry = harness.conn.display().get_registry(&qhandle, ());
+
+    let manager: ZwpPointerConstraintsV1 = registry.bind(mgr_name, mgr_ver, &qhandle, ());
+    let compositor: wl_compositor::WlCompositor = registry.bind(comp_name, comp_ver, &qhandle, ());
+    let _seat: wl_seat::WlSeat = registry.bind(seat_name, seat_ver, &qhandle, ());
+
+    harness.roundtrip()?;
+
+    let pointer = harness
+        .client_state
+        .pointer
+        .as_ref()
+        .expect("pointer capability advertised")
+        .clone();
+    let surface = compositor.create_surface(&qhandle, ());
+
+    let locked_pointer =
+        manager.lock_pointer(&surface, &pointer, None, Lifetime::Persistent, &qhandle, ());
+    surface.commit();
+    harness.roundtrip()?;
+
+    // Surface has not yet received focus; constraint should remain inactive
+    assert!(
+        !harness
+            .client_state
+            .events
+            .contains(&ConstraintEvent::Locked),
+        "Constraint must not be active before focus acquisition"
+    );
+
+    let server_surface = harness
+        .client
+        .object_from_protocol_id::<ServerWlSurface>(
+            &harness.display.handle(),
+            surface.id().protocol_id(),
+        )
+        .expect("Server surface not found");
+
+    let seat_pointer = harness.state.seat.get_pointer().expect("Seat pointer");
+    let serial = smithay::utils::SERIAL_COUNTER.next_serial();
+    seat_pointer.motion(
+        &mut harness.state,
+        Some((server_surface.clone(), Point::from((0.0, 0.0)))),
+        &MotionEvent {
+            location: Point::from((10.0, 10.0)),
+            serial,
+            time: 100,
+        },
+    );
+    seat_pointer.frame(&mut harness.state);
+
+    harness
+        .state
+        .seat
+        .get_keyboard()
+        .expect("Keyboard")
+        .set_focus(&mut harness.state, Some(server_surface), serial);
+
+    harness.roundtrip()?;
+
+    // Constraint should now be activated
+    assert!(
+        harness
+            .client_state
+            .events
+            .contains(&ConstraintEvent::Locked),
+        "Constraint must be activated after focus acquisition"
+    );
+
+    locked_pointer.destroy();
+    surface.destroy();
     harness.roundtrip()?;
     Ok(())
 }

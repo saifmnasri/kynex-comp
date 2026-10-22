@@ -359,6 +359,10 @@ impl SeatHandler for KynexState {
             seat,
             client,
         );
+
+        if let (Some(surface), Some(pointer)) = (focused, seat.get_pointer()) {
+            crate::pointer_constraints::maybe_activate_pointer_constraint(surface, &pointer);
+        }
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
