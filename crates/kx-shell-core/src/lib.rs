@@ -73,7 +73,7 @@ pub use pointer_constraints::{init_pointer_constraints_global, maybe_activate_po
 pub use presentation::{init_presentation_global, post_presentation_feedback};
 pub use primary_selection::init_primary_selection_global;
 pub use relative_pointer::init_relative_pointer_global;
-pub use session_lock::init_session_lock_global;
+pub use session_lock::{find_lock_surface_under, init_session_lock_global};
 pub use single_pixel_buffer::init_single_pixel_buffer_global;
 pub use state::KynexState;
 pub use syncobj::init_drm_syncobj_global;

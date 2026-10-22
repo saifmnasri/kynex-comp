@@ -21,6 +21,17 @@ smithay::delegate_idle_inhibit!(KynexState);
 impl IdleInhibitHandler for KynexState {
     fn inhibit(&mut self, surface: WlSurface) {
         tracing::info!(surface = ?surface.id(), "Client requested idle inhibitor on surface");
+        if let Some(client) = surface.client() {
+            if let Some(client_data) = client.get_data::<crate::client::ClientState>() {
+                if !client_data.try_increment_idle_inhibitor() {
+                    tracing::warn!(
+                        surface = ?surface.id(),
+                        "Client exceeded maximum active idle inhibitors limit"
+                    );
+                    return;
+                }
+            }
+        }
         if !self.idle_inhibitors.iter().any(|s| s == &surface) {
             self.idle_inhibitors.push(surface);
         }
@@ -28,6 +39,11 @@ impl IdleInhibitHandler for KynexState {
 
     fn uninhibit(&mut self, surface: WlSurface) {
         tracing::info!(surface = ?surface.id(), "Idle inhibitor removed on surface");
+        if let Some(client) = surface.client() {
+            if let Some(client_data) = client.get_data::<crate::client::ClientState>() {
+                client_data.decrement_idle_inhibitor();
+            }
+        }
         self.idle_inhibitors
             .retain(|s| s.is_alive() && s != &surface);
     }

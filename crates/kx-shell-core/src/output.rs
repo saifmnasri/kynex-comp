@@ -5,7 +5,7 @@
 
 use kx_layout::{WindowGeometry, WindowId};
 use smithay::desktop::layer_map_for_output;
-use smithay::output::{Mode, Output};
+use smithay::output::{Mode, Output, Scale};
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Physical, Point, Size};
 
@@ -111,5 +111,33 @@ impl KynexState {
         }
 
         crate::window::sync_layout_to_space(self);
+    }
+
+    /// Updates preferred fractional scales for all mapped windows and layer surfaces
+    /// according to the output they currently reside on.
+    pub fn update_fractional_scales(&mut self) {
+        for (&wid, window) in &self.window_map {
+            if let Some(output) = crate::window::primary_output_for_window(self, wid) {
+                let scale = output.current_scale().fractional_scale();
+                if let Some(surface) = window.toplevel().map(|t| t.wl_surface().clone()) {
+                    crate::fractional_scale::update_surface_fractional_scale(&surface, scale);
+                }
+            }
+        }
+
+        for output in self.space.outputs() {
+            let scale = output.current_scale().fractional_scale();
+            let layer_map = layer_map_for_output(output);
+            for layer in layer_map.layers() {
+                let surface = layer.wl_surface();
+                crate::fractional_scale::update_surface_fractional_scale(surface, scale);
+            }
+        }
+    }
+
+    /// Updates the scale of a display output and refreshes fractional scales.
+    pub fn update_output_scale(&mut self, output: &Output, scale: Scale) {
+        output.change_current_state(None, None, Some(scale), None);
+        self.update_fractional_scales();
     }
 }

@@ -16,7 +16,6 @@ use smithay::backend::input::{
 };
 use smithay::backend::renderer::Color32F;
 use smithay::backend::renderer::damage::OutputDamageTracker;
-use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{WinitEvent, WinitEventLoop, WinitGraphicsBackend, WinitInput};
 use smithay::desktop::WindowSurfaceType;
@@ -145,16 +144,21 @@ impl NestedLoopState {
         self.pointer_location = event.position_transformed(output_size.to_logical(1));
         let serial = SERIAL_COUNTER.next_serial();
 
-        let under = self
-            .state
-            .space
-            .element_under(self.pointer_location)
-            .and_then(|(window, window_loc)| {
-                let relative = self.pointer_location - window_loc.to_f64();
-                window.surface_under(relative, WindowSurfaceType::ALL).map(
-                    |(surface, surface_offset)| (surface, (window_loc + surface_offset).to_f64()),
-                )
-            });
+        let under = if self.state.is_session_locked {
+            crate::session_lock::find_lock_surface_under(&self.state, self.pointer_location)
+        } else {
+            self.state
+                .space
+                .element_under(self.pointer_location)
+                .and_then(|(window, window_loc)| {
+                    let relative = self.pointer_location - window_loc.to_f64();
+                    window.surface_under(relative, WindowSurfaceType::ALL).map(
+                        |(surface, surface_offset)| {
+                            (surface, (window_loc + surface_offset).to_f64())
+                        },
+                    )
+                })
+        };
 
         let mut grabbed = false;
         if let Some(pointer) = self.state.seat.get_pointer() {
@@ -170,10 +174,17 @@ impl NestedLoopState {
             );
             pointer.frame(&mut self.state);
             grabbed = grabbed || pointer.is_grabbed();
+            if let Some(surface) = pointer.current_focus() {
+                crate::pointer_constraints::maybe_activate_pointer_constraint(&surface, &pointer);
+            }
         }
 
         if grabbed {
             self.backend.window().request_redraw();
+        } else if self.state.is_session_locked {
+            self.backend
+                .window()
+                .set_cursor(smithay::reexports::winit::window::CursorIcon::Default);
         } else {
             let hit = crate::decoration::find_window_hit_test(&self.state, self.pointer_location);
             let icon = hit
@@ -198,6 +209,23 @@ impl NestedLoopState {
         let button = event.button_code();
         let state = event.state();
         let time = event.time_msec();
+
+        if self.state.is_session_locked {
+            if let Some(pointer) = self.state.seat.get_pointer() {
+                pointer.button(
+                    &mut self.state,
+                    &ButtonEvent {
+                        serial,
+                        time,
+                        button,
+                        state,
+                    },
+                );
+                pointer.frame(&mut self.state);
+            }
+            self.backend.window().request_redraw();
+            return;
+        }
 
         if state == ButtonState::Pressed {
             if crate::grab::try_start_compositor_grab(
@@ -321,20 +349,32 @@ impl NestedLoopState {
             .map_err(|e| ShellError::ClientDispatch(e.to_string()))?;
 
         let buffer_age = self.backend.buffer_age().unwrap_or(0);
-        let ssd_elements = crate::decoration::collect_ssd_render_elements(&self.state);
+        let (clear_color, spaces_active) = if self.state.is_session_locked {
+            (Color32F::new(0.0, 0.0, 0.0, 1.0), false)
+        } else {
+            (self.bg_color, true)
+        };
 
         let render_res = {
             let (renderer, mut framebuffer) = self.backend.bind()?;
-            render_output::<_, SolidColorRenderElement, _, _>(
+            let custom_elements =
+                super::render::collect_nested_render_elements(&self.state, renderer);
+            let spaces = if spaces_active {
+                vec![&self.state.space]
+            } else {
+                Vec::new()
+            };
+
+            render_output::<_, super::render::NestedRenderElement<GlesRenderer>, _, _>(
                 &self.state.output,
                 renderer,
                 &mut framebuffer,
                 1.0,
                 buffer_age,
-                [&self.state.space],
-                &ssd_elements,
+                spaces,
+                &custom_elements,
                 &mut self.damage_tracker,
-                self.bg_color,
+                clear_color,
             )
             .map_err(|e| ShellError::Render(format!("{e:?}")))?
         };
@@ -382,7 +422,7 @@ pub(crate) fn register_event_sources(
                     if let Ok(creds) = client.get_credentials(&loop_state.display.handle()) {
                         client_data.inspect_and_cache_privilege(
                             &creds,
-                            &loop_state.state.config.privilege.layer_shell_allow,
+                            &loop_state.state.config.privilege,
                         );
                     }
                     tracing::info!(?client, "Accepted new Wayland client connection");
@@ -398,6 +438,9 @@ pub(crate) fn register_event_sources(
             |_readiness, _file, loop_state| {
                 if let Err(err) = loop_state.display.dispatch_clients(&mut loop_state.state) {
                     tracing::error!(%err, "Error dispatching Wayland clients on poll event");
+                }
+                if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                    tracing::error!(%err, "Error dispatching idle timers on poll event");
                 }
                 loop_state.backend.window().request_redraw();
                 Ok(PostAction::Continue)
@@ -435,18 +478,17 @@ fn handle_winit_event(event: &WinitEvent, loop_state: &mut NestedLoopState) {
         WinitEvent::Focus(focused) => {
             tracing::debug!(focused, "Nested window focus changed");
         }
-        WinitEvent::Input(InputEvent::Keyboard { event }) => {
-            loop_state.handle_keyboard_event(event);
+        WinitEvent::Input(input_event) => {
+            loop_state.state.process_input_activity();
+            match input_event {
+                InputEvent::Keyboard { event } => loop_state.handle_keyboard_event(event),
+                InputEvent::PointerMotionAbsolute { event } => {
+                    loop_state.handle_pointer_motion_absolute(event);
+                }
+                InputEvent::PointerButton { event } => loop_state.handle_pointer_button(event),
+                InputEvent::PointerAxis { event } => loop_state.handle_pointer_axis(event),
+                _ => {}
+            }
         }
-        WinitEvent::Input(InputEvent::PointerMotionAbsolute { event }) => {
-            loop_state.handle_pointer_motion_absolute(event);
-        }
-        WinitEvent::Input(InputEvent::PointerButton { event }) => {
-            loop_state.handle_pointer_button(event);
-        }
-        WinitEvent::Input(InputEvent::PointerAxis { event }) => {
-            loop_state.handle_pointer_axis(event);
-        }
-        WinitEvent::Input(_) => {}
     }
 }

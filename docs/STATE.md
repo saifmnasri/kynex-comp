@@ -2,10 +2,23 @@
 
 > Update at the end of every task. A fresh chat session must be able to continue from this file alone.
 
-**Current phase:** 5 — XWayland (Phase 4 — Real-App Protocol Completeness — CLOSED)
-**Last updated:** 2026-10-16 — Milestone 4F (`wp_primary_selection`, `wp_single_pixel_buffer`, `wp_content_type_v1`, `wp_tearing_control_v1`, `ext_idle_notifier_v1`, `wp_alpha_modifier_v1`) completed and Phase 4 gate closed on branch `feat/phase-4f-extended-protocols`. Ready for merge to `dev` and `main`.
+**Current phase:** 5 — XWayland (Phase 4 — Real-App Protocol Completeness — CLOSED & AUDIT REMEDIATED)
+**Last updated:** 2026-10-22 — Independent audit findings F1–F7 from `docs/reviews/phase-4-independent-review.md` fully remediated on branch `fix/phase-4-audit-remediation`. Verification gate 100% green.
 
 ## Done
+- **Phase 4 Independent Audit Remediation — CLOSED:**
+  - **F1 (SEC-02 / SEC-07: Independent Privilege Gating & Quotas):** Decoupled `[privilege]` allow-lists into separate config vectors (`layer_shell_allow`, `session_lock_allow`, `input_method_allow`, `foreign_toplevel_allow`) in `kx-config` and `kx-shell-core`. Added per-client quota bounding across all protocol objects (`max_locked_pointers`, `max_confined_pointers`, `max_text_inputs`, `max_input_methods`, `max_idle_inhibitors`, etc.). Added comprehensive integration tests.
+  - **F2 (SEC-01: Session Lock Fail-Closed & Rendering/Input Gate):** Enforced fail-closed session lock state machine in `crates/kx-shell-core/src/session_lock.rs`. All window/layer surface rendering and non-lock input events are suppressed while locked. If lock client disconnects without unlocking, session remains persistently locked with black screen fallback.
+  - **F3 (BUG-03: Idle Notifier Event Loop & Input Activity Hook):** Created dedicated Calloop event loop for idle notifier timers in `crates/kx-shell-core/src/idle_notify.rs`, hooked input activity notifications on all pointer motion, button, key, and touch events to reset idle timeouts.
+  - **F4 (BUG-04: DRM Presentation Feedback):** Wired real DRM page-flip vblank presentation feedback in `crates/kx-shell-core/src/drm/mod.rs` and `drm/output.rs`, invoking `post_presentation_feedback` with real monotonic hardware timestamps and refresh sequence counters.
+  - **F5 (BUG-05: Pointer Constraints Activation on Focus):** Hooked pointer focus changes in `crates/kx-shell-core/src/pointer_constraints.rs` to automatically activate locked/confined pointer constraints when constrained surface acquires focus and deactivate on unfocus.
+  - **F6 (BUG-06: Fractional Scale on Output Migration):** Updated `crates/kx-shell-core/src/fractional_scale.rs`, `output.rs`, and `window.rs` (`sync_layout_to_space`) to advertise updated preferred scales to surfaces when a window migrates across outputs with differing scale factors or dynamic display scale changes. Verified via `test_fractional_scale_output_migration_and_scale_update`.
+  - **F7 (ARCH-09 / DOC-11 / SPEC-08: Split Oversized Functions, Record ADR-0034, Docs Integrity):**
+    - Split `semantic_validation` test in `crates/kx-config/src/load.rs` into three focused tests $\le 35$ lines.
+    - Split `KynexState::new_with_output` in `crates/kx-shell-core/src/state.rs` (using `CoreState` and `build_state`) to $\le 50$ lines.
+    - Extracted `create_render_elements` in `crates/kx-shell-core/src/drm/output.rs` reducing `initialize_output_entry` to 54 lines.
+    - Recorded ADR-0034 in `docs/DECISIONS.md` documenting Phase 4 protocol consolidation in `kx-shell-core`, formal deferrals of extended protocols, and unsafe policy scope clarification.
+    - Reconciled protocol count (19) and unsafe policy description in `docs/reviews/phase-4-review.md`.
 - **Phase 4 (Real-App Protocol Completeness) — CLOSED:**
   - **Milestone 4F (Extended Quality Protocols) — DONE:**
     - Step 4F.1: Primary selection protocol handler in `crates/kx-shell-core/src/primary_selection.rs` (`zwp_primary_selection_device_manager_v1`) implementing `init_primary_selection_global`, `PrimarySelectionHandler`, focus-synchronized offer updates via `SeatHandler::focus_changed` per Rule 05, and integration tests in `crates/kx-shell-core/tests/primary_selection_client.rs` verifying global advertisement, binding, and device creation.

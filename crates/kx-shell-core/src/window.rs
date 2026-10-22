@@ -134,6 +134,7 @@ pub fn sync_layout_to_space(state: &mut KynexState) {
     }
 
     state.space.refresh();
+    state.update_fractional_scales();
 }
 
 /// Handles creation and authoritative mapping of a new [`ToplevelSurface`].

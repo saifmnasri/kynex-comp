@@ -155,4 +155,20 @@ pub struct PrivilegeConfig {
     /// Allow-listed absolute executable paths permitted to bind `zwlr_layer_shell_v1`.
     #[serde(default)]
     pub layer_shell_allow: Vec<String>,
+
+    /// Allow-listed absolute executable paths permitted to bind `ext_foreign_toplevel_list_v1`.
+    #[serde(default)]
+    pub foreign_toplevel_allow: Vec<String>,
+
+    /// Allow-listed absolute executable paths permitted to bind `ext_idle_notifier_v1`.
+    #[serde(default)]
+    pub idle_notify_allow: Vec<String>,
+
+    /// Allow-listed absolute executable paths permitted to bind `ext_session_lock_manager_v1`.
+    #[serde(default)]
+    pub session_lock_allow: Vec<String>,
+
+    /// Allow-listed absolute executable paths permitted to bind `zwp_input_method_manager_v2`.
+    #[serde(default)]
+    pub input_method_allow: Vec<String>,
 }

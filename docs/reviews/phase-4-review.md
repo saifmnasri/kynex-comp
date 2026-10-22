@@ -11,7 +11,7 @@
 
 ## 1. Executive Summary
 
-Phase 4 ("Real-App Protocol Completeness") brings KynexComp to complete Wayland protocol feature parity for modern desktop, productivity, gaming, and multimedia workloads. Over the course of Milestones 4A through 4F, eighteen (18) standard and extension Wayland protocols were implemented, wired into `KynexState`, and rigorously verified with headless in-process integration test suites and multi-app live sessions.
+Phase 4 ("Real-App Protocol Completeness") brings KynexComp to complete Wayland protocol feature parity for modern desktop, productivity, gaming, and multimedia workloads. Over the course of Milestones 4A through 4F, nineteen (19) standard and extension Wayland protocols were implemented, wired into `KynexState`, and rigorously verified with headless in-process integration test suites and multi-app live sessions.
 
 ### Key Milestones Delivered:
 1. **Milestone 4A (Buffer Management & Explicit Sync):** `linux-dmabuf` (v4/v5 format tables & default device tranche feedback) and `linux-drm-syncobj` (in-flight GPU synchronization via timeline syncobjs).
@@ -31,7 +31,7 @@ Phase 4 ("Real-App Protocol Completeness") brings KynexComp to complete Wayland 
 | **Stability & Zero Panics** | Rule 00, Rule 03 | **PASS** | Zero `unwrap()`, `expect()`, `panic!`, `todo!`, or unchecked slicing in production code. Surface role conflicts, duplicate attachments, and invalid arguments trigger Wayland protocol errors (`post_error`), never compositor panics. |
 | **Non-blocking Event Loop** | Rule 00, Rule 06 | **PASS** | All protocol timers (e.g. idle notifier monitors) use non-blocking Calloop event sources. Zero sync sleeps, zero blocking disk/network I/O, zero cross-thread lock contentions on the compositor loop. |
 | **Strict File & Function Budgets** | Rule 02, Rule 03 | **PASS** | Strict invariant: Every file in `crates/kx-shell-core/src/` is $\le 500$ lines. `state.rs` is at 469 lines, `output.rs` at 493 lines, `drm/mod.rs` at 456 lines. Functions $\le 60$ lines. |
-| **Unsafe Policy** | Rule 00, Rule 03 | **PASS** | `#![forbid(unsafe_code)]` enforced across all workspace crates. Only the pre-approved, audited DRM EGL initialization module retains isolated, documented unsafe code (`SAFETY:` comments present). |
+| **Unsafe Policy** | Rule 00, Rule 03 | **PASS** | `#![forbid(unsafe_code)]` enforced across all pure logic workspace crates; `kx-shell-core` enforces `#![deny(unsafe_code)]` solely to accommodate the pre-approved, audited DRM EGL initialization module in `drm/egl.rs` (ADR-0020, ADR-0034) with isolated, documented unsafe code (`SAFETY:` comments present). |
 | **No Copyleft / GPL IP** | Rule 01 | **PASS** | Clean-room implementations designed directly against Smithay 0.7 abstractions and official Wayland XML protocol specifications. Zero GPL/LGPL/AGPL code copied. |
 | **Verification Gate** | Rule 08 | **PASS** | Full `just check` passes cleanly (cargo fmt, clippy `-D warnings`, workspace tests, cargo-deny). `just doc` passes with zero broken links. Release build check passes; fault-injection release compile-guard verified. |
 

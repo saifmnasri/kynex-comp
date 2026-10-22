@@ -4,6 +4,7 @@
 //! Nested compositor runner using the Smithay winit backend and Calloop event loop.
 
 mod event;
+pub mod render;
 
 use std::os::fd::OwnedFd;
 use std::time::{Duration, Instant};
@@ -52,6 +53,8 @@ impl Default for NestedConfig {
 pub struct NestedOptions {
     /// Nested window configuration.
     pub config: NestedConfig,
+    /// Optional custom compositor configuration.
+    pub app_config: Option<kx_config::Config>,
     /// Optional limit on the number of rendered frames before exiting (useful for testing).
     pub max_frames: Option<u64>,
     /// Optional time limit before the compositor cleanly terminates.
@@ -100,6 +103,21 @@ fn register_exit_timer(
     Ok(())
 }
 
+fn register_idle_timer(handle: &LoopHandle<'_, NestedLoopState>) -> Result<(), ShellError> {
+    let timer = Timer::from_duration(Duration::from_millis(100));
+    handle
+        .insert_source(timer, |_deadline, (), loop_state| {
+            if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                tracing::error!(%err, "Error dispatching periodic idle timers");
+            }
+            TimeoutAction::ToDuration(Duration::from_millis(100))
+        })
+        .map_err(|e| {
+            ShellError::SourceInsertion(format!("Failed to insert idle notifier timer: {e}"))
+        })?;
+    Ok(())
+}
+
 fn run_event_loop(
     event_loop: &mut EventLoop<'_, NestedLoopState>,
     loop_state: &mut NestedLoopState,
@@ -129,7 +147,10 @@ fn setup_nested_environment(
     let [r, g, b, a] = options.config.background_color;
     let bg_color = Color32F::new(r, g, b, a);
 
-    let (display, listening_socket, state, poll_fd) = create_display_and_state(&backend)?;
+    let (display, listening_socket, mut state, poll_fd) = create_display_and_state(&backend)?;
+    if let Some(cfg) = &options.app_config {
+        state.config = cfg.clone();
+    }
     let damage_tracker = OutputDamageTracker::from_output(&state.output);
     let start_time = Instant::now();
 
@@ -148,6 +169,7 @@ fn setup_nested_environment(
     if let Some(duration) = options.exit_after {
         register_exit_timer(&event_loop.handle(), duration)?;
     }
+    register_idle_timer(&event_loop.handle())?;
 
     let loop_state = NestedLoopState::new(
         backend,

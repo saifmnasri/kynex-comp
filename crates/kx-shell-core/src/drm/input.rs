@@ -66,6 +66,7 @@ pub fn process_input_event(
     pointer_location: &mut Point<f64, Logical>,
     bounds: Size<i32, Logical>,
 ) -> bool {
+    state.process_input_activity();
     match event {
         InputEvent::Keyboard { event } => handle_keyboard_event(&event, state),
         InputEvent::PointerMotion { event } => {
@@ -148,6 +149,9 @@ fn dispatch_pointer_motion(
             },
         );
         pointer.frame(state);
+        if let Some(surface) = pointer.current_focus() {
+            crate::pointer_constraints::maybe_activate_pointer_constraint(&surface, &pointer);
+        }
     }
 }
 

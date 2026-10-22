@@ -10,6 +10,7 @@ pub mod hotplug;
 pub mod input;
 pub mod layout;
 pub mod output;
+pub mod scan;
 pub mod session;
 
 use std::os::fd::OwnedFd;
@@ -18,6 +19,7 @@ use std::time::{Duration, Instant};
 
 use calloop::generic::Generic;
 use calloop::signals::{Signal, Signals};
+use calloop::timer::{TimeoutAction, Timer};
 use calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::backend::drm::{DrmDeviceNotifier, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
@@ -159,6 +161,7 @@ fn register_event_sources(
         .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
 
     register_wayland_sources(loop_handle, sources.listening_socket, sources.poll_fd)?;
+    register_idle_timer(loop_handle)?;
 
     Ok(())
 }
@@ -211,6 +214,14 @@ fn handle_drm_event(event: DrmEvent, loop_state: &mut DrmLoopState) {
             if loop_state.pipeline.on_vblank(crtc).is_some() {
                 loop_state.frame_count = loop_state.frame_count.saturating_add(1);
 
+                let elapsed = loop_state.start_time.elapsed();
+                loop_state.pipeline.post_presentation_feedback(
+                    crtc,
+                    &loop_state.state.space,
+                    elapsed,
+                    loop_state.frame_count,
+                );
+
                 if let Some(limit) = loop_state.max_frames {
                     if loop_state.frame_count >= limit {
                         tracing::info!(
@@ -256,7 +267,7 @@ fn register_wayland_sources(
                     if let Ok(creds) = client.get_credentials(&loop_state.display.handle()) {
                         client_data.inspect_and_cache_privilege(
                             &creds,
-                            &loop_state.state.config.privilege.layer_shell_allow,
+                            &loop_state.state.config.privilege,
                         );
                     }
                     tracing::info!(?client, "Accepted new Wayland client connection");
@@ -273,11 +284,29 @@ fn register_wayland_sources(
                 if let Err(err) = loop_state.display.dispatch_clients(&mut loop_state.state) {
                     tracing::error!(%err, "Error dispatching Wayland clients on poll event");
                 }
+                if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                    tracing::error!(%err, "Error dispatching idle timers on poll event");
+                }
                 Ok(PostAction::Continue)
             },
         )
         .map_err(|e| ShellError::SourceInsertion(e.to_string()))?;
 
+    Ok(())
+}
+
+fn register_idle_timer(handle: &LoopHandle<'_, DrmLoopState>) -> Result<(), ShellError> {
+    let timer = Timer::from_duration(Duration::from_millis(100));
+    handle
+        .insert_source(timer, |_deadline, (), loop_state| {
+            if let Err(err) = loop_state.state.dispatch_idle_timers(Some(Duration::ZERO)) {
+                tracing::error!(%err, "Error dispatching periodic idle timers");
+            }
+            TimeoutAction::ToDuration(Duration::from_millis(100))
+        })
+        .map_err(|e| {
+            ShellError::SourceInsertion(format!("Failed to insert idle notifier timer: {e}"))
+        })?;
     Ok(())
 }
 

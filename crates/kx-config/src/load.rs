@@ -71,14 +71,23 @@ pub fn load_from_str(input: &str) -> Result<Config, ConfigError> {
     Ok(config)
 }
 
-fn validate_privilege(privilege: &crate::types::PrivilegeConfig) -> Result<(), ConfigError> {
-    for path in &privilege.layer_shell_allow {
+fn validate_allow_list(paths: &[String], field_name: &str) -> Result<(), ConfigError> {
+    for path in paths {
         if path.is_empty() || !path.starts_with('/') || path.contains("..") {
             return Err(ConfigError::Validation(format!(
-                "invalid layer_shell_allow path '{path}', must be an absolute path without '..'"
+                "invalid {field_name} path '{path}', must be an absolute path without '..'"
             )));
         }
     }
+    Ok(())
+}
+
+fn validate_privilege(privilege: &crate::types::PrivilegeConfig) -> Result<(), ConfigError> {
+    validate_allow_list(&privilege.layer_shell_allow, "layer_shell_allow")?;
+    validate_allow_list(&privilege.foreign_toplevel_allow, "foreign_toplevel_allow")?;
+    validate_allow_list(&privilege.idle_notify_allow, "idle_notify_allow")?;
+    validate_allow_list(&privilege.session_lock_allow, "session_lock_allow")?;
+    validate_allow_list(&privilege.input_method_allow, "input_method_allow")?;
     Ok(())
 }
 
@@ -241,7 +250,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_validation() {
+    fn semantic_validation_general_and_input() {
         let invalid_log = "config_version = 1\n[general]\nlog_level = \"verbose\"\n";
         assert!(matches!(
             load_from_str(invalid_log),
@@ -271,7 +280,10 @@ mod tests {
             load_from_str(rate_too_high),
             Err(ConfigError::Validation(_))
         ));
+    }
 
+    #[test]
+    fn semantic_validation_keybindings() {
         let valid_super = "config_version = 1\n[keybindings]\nprimary_mod = \"Super\"\n";
         let cfg = load_from_str(valid_super).unwrap();
         assert_eq!(cfg.keybindings.primary_mod, "Super");
@@ -285,19 +297,33 @@ mod tests {
             load_from_str(invalid_mod),
             Err(ConfigError::Validation(_))
         ));
+    }
 
+    #[test]
+    fn semantic_validation_privilege() {
         let valid_privilege = r#"
             config_version = 1
             [privilege]
-            layer_shell_allow = ["/usr/bin/waybar", "/usr/libexec/kynex-panel"]
+            layer_shell_allow = ["/usr/bin/waybar"]
+            foreign_toplevel_allow = ["/usr/bin/waybar", "/usr/bin/kynex-dock"]
+            idle_notify_allow = ["/usr/bin/swayidle"]
+            session_lock_allow = ["/usr/bin/swaylock"]
+            input_method_allow = ["/usr/bin/fcitx5"]
         "#;
         let cfg = load_from_str(valid_privilege).unwrap();
-        assert_eq!(cfg.privilege.layer_shell_allow.len(), 2);
+        assert_eq!(cfg.privilege.layer_shell_allow, vec!["/usr/bin/waybar"]);
+        assert_eq!(
+            cfg.privilege.foreign_toplevel_allow,
+            vec!["/usr/bin/waybar", "/usr/bin/kynex-dock"]
+        );
+        assert_eq!(cfg.privilege.idle_notify_allow, vec!["/usr/bin/swayidle"]);
+        assert_eq!(cfg.privilege.session_lock_allow, vec!["/usr/bin/swaylock"]);
+        assert_eq!(cfg.privilege.input_method_allow, vec!["/usr/bin/fcitx5"]);
 
         let relative_privilege = r#"
             config_version = 1
             [privilege]
-            layer_shell_allow = ["bin/waybar"]
+            session_lock_allow = ["bin/swaylock"]
         "#;
         assert!(matches!(
             load_from_str(relative_privilege),
@@ -307,7 +333,7 @@ mod tests {
         let traversal_privilege = r#"
             config_version = 1
             [privilege]
-            layer_shell_allow = ["/usr/bin/../bin/waybar"]
+            idle_notify_allow = ["/usr/bin/../bin/swayidle"]
         "#;
         assert!(matches!(
             load_from_str(traversal_privilege),
