@@ -15,14 +15,16 @@ use smithay::backend::drm::output::{DrmOutput, DrmOutputManager, DrmOutputRender
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::{Color32F, ImportDma};
-use smithay::output::{Output, PhysicalProperties, Scale, Subpixel};
+use smithay::output::Output;
 use smithay::reexports::drm::control::connector;
-use smithay::reexports::drm::control::{Device, Mode, ModeTypeFlags, RawResourceHandle, crtc};
-use smithay::utils::{Logical, Point, Transform};
+use smithay::reexports::drm::control::{Device, Mode, crtc};
+use smithay::utils::{Logical, Point};
 use tracing::info;
 
 use crate::drm::gpu::DrmGpuResources;
-use crate::drm::layout::{ConnectorCandidate, allocate_outputs};
+use crate::drm::layout::allocate_outputs;
+pub use crate::drm::scan::ScannedConnector;
+pub(crate) use crate::drm::scan::{create_kynex_output, scan_connected_connectors};
 use crate::error::ShellError;
 use crate::frame_clock::FrameClock;
 
@@ -54,19 +56,6 @@ pub type PipelineDrmOutputManager = DrmOutputManager<
     (),
     DrmDeviceFd,
 >;
-
-/// Detected display connector with parsed modes and layout candidate.
-#[derive(Debug, Clone)]
-pub struct ScannedConnector {
-    /// Connected connector hardware handle.
-    pub handle: connector::Handle,
-    /// Connected connector hardware info.
-    pub info: connector::Info,
-    /// Preferred or highest-resolution video mode.
-    pub mode: Mode,
-    /// Candidate representation for CRTC allocation.
-    pub candidate: ConnectorCandidate<connector::Handle>,
-}
 
 /// Active DRM output modesetting pipeline managing scanout on multiple CRTCs and connectors.
 pub struct DrmOutputPipeline {
@@ -304,6 +293,24 @@ impl DrmOutputPipeline {
 
         smithay::utils::Size::from((max_x, max_y))
     }
+
+    /// Delivers presentation feedback timestamps for the given CRTC output.
+    pub fn post_presentation_feedback(
+        &self,
+        crtc: crtc::Handle,
+        space: &smithay::desktop::Space<smithay::desktop::Window>,
+        time: Duration,
+        sequence: u64,
+    ) {
+        if let Some(entry) = self.outputs.get(&crtc) {
+            crate::presentation::post_presentation_feedback(
+                space,
+                &entry.kynex_output,
+                time,
+                sequence,
+            );
+        }
+    }
 }
 
 fn create_drm_output_manager(
@@ -389,105 +396,4 @@ pub(crate) fn initialize_output_entry(
         frame_count: 0,
         position: assignment.position,
     })
-}
-
-pub(crate) fn scan_connected_connectors(
-    drm_fd: &DrmDeviceFd,
-) -> Result<Vec<ScannedConnector>, ShellError> {
-    let res = drm_fd
-        .resource_handles()
-        .map_err(|e| ShellError::Drm(format!("failed to query DRM resource handles: {e}")))?;
-
-    let available_crtcs = res.crtcs().to_vec();
-    let mut detected = Vec::new();
-
-    for handle in res.connectors() {
-        let Ok(info) = drm_fd.get_connector(*handle, false) else {
-            continue;
-        };
-        if info.state() == connector::State::Connected && !info.modes().is_empty() {
-            let preferred_mode = info
-                .modes()
-                .iter()
-                .find(|m| m.mode_type().contains(ModeTypeFlags::PREFERRED))
-                .or_else(|| info.modes().first())
-                .copied()
-                .ok_or_else(|| {
-                    ShellError::Output("connected connector has no available modes".to_string())
-                })?;
-
-            let (width, height) = preferred_mode.size();
-            let size = smithay::utils::Size::from((i32::from(width), i32::from(height)));
-
-            let mut possible_crtcs = Vec::new();
-            for enc_handle in info.encoders() {
-                if let Ok(enc_info) = drm_fd.get_encoder(*enc_handle) {
-                    let matching_crtcs = res.filter_crtcs(enc_info.possible_crtcs());
-                    for (idx, crtc) in available_crtcs.iter().enumerate() {
-                        if matching_crtcs.contains(crtc) {
-                            #[expect(
-                                clippy::cast_possible_truncation,
-                                reason = "CRTC count on DRM device is small"
-                            )]
-                            possible_crtcs.push(idx as u32);
-                        }
-                    }
-                }
-            }
-
-            let raw_id: u32 = Into::<RawResourceHandle>::into(*handle).get();
-            let name = format!("{:?}-{raw_id}", info.interface());
-
-            let candidate = ConnectorCandidate {
-                handle: *handle,
-                name,
-                size,
-                possible_crtcs,
-            };
-
-            detected.push(ScannedConnector {
-                handle: *handle,
-                info,
-                mode: preferred_mode,
-                candidate,
-            });
-        }
-    }
-
-    Ok(detected)
-}
-
-fn create_kynex_output(
-    connector_handle: connector::Handle,
-    connector_info: &connector::Info,
-    mode: &Mode,
-    position: Point<i32, Logical>,
-) -> Output {
-    let raw_id: u32 = Into::<RawResourceHandle>::into(connector_handle).get();
-    let output = Output::new(
-        format!("DRM-{raw_id}"),
-        PhysicalProperties {
-            size: (0, 0).into(),
-            subpixel: Subpixel::Unknown,
-            make: "Kynex".to_string(),
-            model: format!("{:?}", connector_info.interface()),
-        },
-    );
-
-    let (width, height) = mode.size();
-    let mode_info = smithay::output::Mode {
-        size: (i32::from(width), i32::from(height)).into(),
-        refresh: i32::try_from(mode.vrefresh())
-            .unwrap_or(60)
-            .saturating_mul(1000),
-    };
-    output.set_preferred(mode_info);
-    output.change_current_state(
-        Some(mode_info),
-        Some(Transform::Normal),
-        Some(Scale::Integer(1)),
-        Some(position),
-    );
-
-    output
 }

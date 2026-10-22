@@ -403,3 +403,75 @@ fn test_presentation_feedback_discarded_when_superseded() -> Result<(), Box<dyn 
     );
     Ok(())
 }
+
+#[test]
+fn test_presentation_feedback_multiple_frames() -> Result<(), Box<dyn Error>> {
+    let mut harness = TestHarness::new()?;
+    let qhandle = harness.event_queue.handle();
+
+    let display_proxy = harness.client_conn.display();
+    let registry = display_proxy.get_registry(&qhandle, ());
+
+    harness.sync_roundtrip()?;
+
+    let (pres_name, _) = harness
+        .client_state
+        .presentation_global
+        .ok_or("wp_presentation global")?;
+    let (comp_name, _) = harness
+        .client_state
+        .compositor_global
+        .ok_or("wl_compositor global")?;
+    let (xdg_name, _) = harness
+        .client_state
+        .xdg_wm_base_global
+        .ok_or("xdg_wm_base global")?;
+
+    let presentation: wp_presentation::WpPresentation = registry.bind(pres_name, 1, &qhandle, ());
+    let compositor: wl_compositor::WlCompositor = registry.bind(comp_name, 4, &qhandle, ());
+    let xdg_wm_base: xdg_wm_base::XdgWmBase = registry.bind(xdg_name, 1, &qhandle, ());
+
+    harness.sync_roundtrip()?;
+
+    let surface = compositor.create_surface(&qhandle, ());
+    let xdg_surface = xdg_wm_base.get_xdg_surface(&surface, &qhandle, ());
+    let toplevel = xdg_surface.get_toplevel(&qhandle, ());
+    toplevel.set_title("Presentation Multi Frame".to_string());
+    surface.commit();
+    harness.sync_roundtrip()?;
+
+    surface.commit();
+    harness.sync_roundtrip()?;
+    assert_eq!(harness.state.space.elements().count(), 1);
+
+    let _fb1 = presentation.feedback(&surface, &qhandle, ());
+    surface.commit();
+    harness.sync_roundtrip()?;
+
+    post_presentation_feedback(
+        &harness.state.space,
+        &harness.state.output,
+        Duration::from_millis(16),
+        1,
+    );
+    harness.sync_roundtrip()?;
+
+    assert_eq!(harness.client_state.presented.len(), 1);
+    assert_eq!(harness.client_state.presented[0].seq, 1);
+
+    let _fb2 = presentation.feedback(&surface, &qhandle, ());
+    surface.commit();
+    harness.sync_roundtrip()?;
+
+    post_presentation_feedback(
+        &harness.state.space,
+        &harness.state.output,
+        Duration::from_millis(33),
+        2,
+    );
+    harness.sync_roundtrip()?;
+
+    assert_eq!(harness.client_state.presented.len(), 2);
+    assert_eq!(harness.client_state.presented[1].seq, 2);
+    Ok(())
+}

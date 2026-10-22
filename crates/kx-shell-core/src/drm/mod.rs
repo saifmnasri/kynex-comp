@@ -10,6 +10,7 @@ pub mod hotplug;
 pub mod input;
 pub mod layout;
 pub mod output;
+pub mod scan;
 pub mod session;
 
 use std::os::fd::OwnedFd;
@@ -212,6 +213,14 @@ fn handle_drm_event(event: DrmEvent, loop_state: &mut DrmLoopState) {
         DrmEvent::VBlank(crtc) => {
             if loop_state.pipeline.on_vblank(crtc).is_some() {
                 loop_state.frame_count = loop_state.frame_count.saturating_add(1);
+
+                let elapsed = loop_state.start_time.elapsed();
+                loop_state.pipeline.post_presentation_feedback(
+                    crtc,
+                    &loop_state.state.space,
+                    elapsed,
+                    loop_state.frame_count,
+                );
 
                 if let Some(limit) = loop_state.max_frames {
                     if loop_state.frame_count >= limit {
